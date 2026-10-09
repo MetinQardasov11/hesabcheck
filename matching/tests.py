@@ -36,6 +36,13 @@ class MatchingTests(SimpleTestCase):
     def test_packaging(self):
         rows = docs(); rows[1].data['lines'][0]['pack_size'] = '10'
         self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_pack_size_not_stated_anywhere(self):
+        rows = docs('80')
+        for doc in rows:
+            doc.data['lines'][0]['pack_size'] = None
+        self.assertEqual((compare(rows)['status'], compare(rows)['disputed_amount']), ('mismatch', '240.00'))
+        rows[0].data['lines'][0]['pack_size'] = '12'
+        self.assertEqual(compare(rows)['status'], 'needs_review')
     def test_missing_document(self):
         self.assertEqual(compare(docs()[:2])['status'], 'needs_review')
     def test_missing_evidence(self):
