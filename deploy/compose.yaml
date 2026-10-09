@@ -9,7 +9,9 @@ services:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
     volumes:
       - postgres:/var/lib/postgresql/data
-    networks: [database]
+    networks:
+      database:
+        aliases: [hesabcheck-postgres]
     command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=30"]
     mem_limit: 256m
     cpus: 0.5
@@ -29,7 +31,7 @@ services:
     env_file: /root/hesabcheck/.env
     environment:
       APP_RELEASE: ${RELEASE_SHA}
-      POSTGRES_HOST: db
+      POSTGRES_HOST: hesabcheck-postgres
       MEDIA_ROOT: /app/media
     volumes:
       - /root/hesabcheck/media:/app/media
