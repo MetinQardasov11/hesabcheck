@@ -1,0 +1,345 @@
+{
+  "type": "object",
+  "properties": {
+    "document_number": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "currency": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "total": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
+    "source": {
+      "type": "object",
+      "properties": {
+        "document_number": {
+          "type": "object",
+          "properties": {
+            "page": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "quote": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "page",
+            "quote"
+          ],
+          "additionalProperties": false
+        },
+        "currency": {
+          "type": "object",
+          "properties": {
+            "page": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "quote": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "page",
+            "quote"
+          ],
+          "additionalProperties": false
+        },
+        "total": {
+          "type": "object",
+          "properties": {
+            "page": {
+              "type": [
+                "integer",
+                "null"
+              ]
+            },
+            "quote": {
+              "type": [
+                "string",
+                "null"
+              ]
+            }
+          },
+          "required": [
+            "page",
+            "quote"
+          ],
+          "additionalProperties": false
+        }
+      },
+      "required": [
+        "document_number",
+        "currency",
+        "total"
+      ],
+      "additionalProperties": false
+    },
+    "lines": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "sku": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "quantity": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "pack_size": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "unit_price": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "line_total": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "source": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "sku": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "quantity": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "unit": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "pack_size": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "unit_price": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              },
+              "line_total": {
+                "type": "object",
+                "properties": {
+                  "page": {
+                    "type": [
+                      "integer",
+                      "null"
+                    ]
+                  },
+                  "quote": {
+                    "type": [
+                      "string",
+                      "null"
+                    ]
+                  }
+                },
+                "required": [
+                  "page",
+                  "quote"
+                ],
+                "additionalProperties": false
+              }
+            },
+            "required": [
+              "name",
+              "sku",
+              "quantity",
+              "unit",
+              "pack_size",
+              "unit_price",
+              "line_total"
+            ],
+            "additionalProperties": false
+          }
+        },
+        "required": [
+          "name",
+          "sku",
+          "quantity",
+          "unit",
+          "pack_size",
+          "unit_price",
+          "line_total",
+          "source"
+        ],
+        "additionalProperties": false
+      }
+    },
+    "warnings": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    }
+  },
+  "required": [
+    "document_number",
+    "currency",
+    "total",
+    "source",
+    "lines",
+    "warnings"
+  ],
+  "additionalProperties": false
+}

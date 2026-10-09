@@ -1,0 +1,11 @@
+SYNTHETIC DEMO — DEMO-RECEIPT-001
+Currency: AZN
+SKU: PAPER-A4-80
+Product: A4 paper 80gsm
+Quantity: 80
+Unit: piece
+Pack size: 1
+Unit price: 12.00 AZN
+Line total: 960.00 AZN
+Goods subtotal: 960.00 AZN
+No tax, discount or shipping charges.

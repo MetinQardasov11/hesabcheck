@@ -1,0 +1,65 @@
+{
+  "kind": "order",
+  "data": {
+    "document_number": "DEMO-ORDER-001",
+    "currency": "AZN",
+    "total": "1200.00",
+    "source": {
+      "document_number": {
+        "page": 1,
+        "quote": "DEMO-ORDER-001 AZN 1200.00"
+      },
+      "currency": {
+        "page": 1,
+        "quote": "DEMO-ORDER-001 AZN 1200.00"
+      },
+      "total": {
+        "page": 1,
+        "quote": "DEMO-ORDER-001 AZN 1200.00"
+      }
+    },
+    "lines": [
+      {
+        "name": "A4 kağız 80 q/m²",
+        "sku": "PAPER-A4-80",
+        "quantity": "100",
+        "unit": "ədəd",
+        "pack_size": "1",
+        "unit_price": "12.00",
+        "line_total": "1200.00",
+        "source": {
+          "name": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          },
+          "sku": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          },
+          "quantity": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          },
+          "unit": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          },
+          "pack_size": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          },
+          "unit_price": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          },
+          "line_total": {
+            "page": 1,
+            "quote": "A4 kağız 80 q/m² | PAPER-A4-80 | 100 | ədəd | 1 | 12.00 | 1200.00"
+          }
+        }
+      }
+    ],
+    "warnings": []
+  },
+  "note": "Sintetik demo məlumatı"
+}

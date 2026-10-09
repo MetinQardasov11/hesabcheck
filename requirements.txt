@@ -1,0 +1,8 @@
+Django>=5.2,<5.3
+djangorestframework>=3.16,<3.17
+django-cors-headers>=4.7,<5
+drf-spectacular>=0.28,<0.30
+google-genai>=1.75,<2
+httpx>=0.28,<1
+python-dotenv>=1,<2
+jsonschema>=4.23,<5

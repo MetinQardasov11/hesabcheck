@@ -1,0 +1,827 @@
+openapi: 3.0.3
+info:
+  title: HesabCheck API
+  version: 1.0.0
+  description: Sifariş, qəbul və faktura müqayisəsi
+paths:
+  /api/auth/token/:
+    post:
+      operationId: auth_token_create
+      tags:
+      - auth
+      requestBody:
+        content:
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/AuthTokenRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/AuthTokenRequest'
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AuthTokenRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/AuthToken'
+          description: ''
+  /api/cases/:
+    get:
+      operationId: cases_list
+      parameters:
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedCaseList'
+          description: ''
+    post:
+      operationId: cases_create
+      tags:
+      - cases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CaseRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CaseRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CaseRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '201':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+          description: ''
+  /api/cases/{id}/:
+    get:
+      operationId: cases_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+          description: ''
+  /api/cases/{id}/compare/:
+    post:
+      operationId: cases_compare_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CompareRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/CompareRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/CompareRequest'
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+          description: ''
+  /api/cases/{id}/dispute-letter/:
+    post:
+      operationId: cases_dispute_letter_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/cases/{id}/document-data/:
+    post:
+      operationId: cases_document_data_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/DataRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+          description: ''
+  /api/cases/{id}/documents/:
+    post:
+      operationId: cases_documents_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UploadRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/UploadRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/UploadRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Document'
+          description: ''
+  /api/cases/{id}/documents/{document_id}/download/:
+    get:
+      operationId: cases_documents_download_retrieve
+      parameters:
+      - in: path
+        name: document_id
+        schema:
+          type: string
+          format: uuid
+        required: true
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/octet-stream:
+              schema:
+                type: string
+                format: binary
+          description: ''
+  /api/cases/{id}/extract/:
+    post:
+      operationId: cases_extract_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+          description: ''
+  /api/cases/{id}/history/:
+    get:
+      operationId: cases_history_list
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      - name: page
+        required: false
+        in: query
+        description: A page number within the paginated result set.
+        schema:
+          type: integer
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PaginatedEventList'
+          description: ''
+  /api/cases/{id}/report/:
+    get:
+      operationId: cases_report_retrieve
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/cases/{id}/review/:
+    post:
+      operationId: cases_review_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/ReviewRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+          description: ''
+  /api/cases/{id}/suggestions/:
+    post:
+      operationId: cases_suggestions_create
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+  /api/schema/:
+    get:
+      operationId: schema_retrieve
+      description: |-
+        OpenApi3 schema for this API. Format can be selected via content negotiation.
+
+        - YAML: application/vnd.oai.openapi
+        - JSON: application/vnd.oai.openapi+json
+      parameters:
+      - in: query
+        name: format
+        schema:
+          type: string
+          enum:
+          - json
+          - yaml
+      - in: query
+        name: lang
+        schema:
+          type: string
+          enum:
+          - af
+          - ar
+          - ar-dz
+          - ast
+          - az
+          - be
+          - bg
+          - bn
+          - br
+          - bs
+          - ca
+          - ckb
+          - cs
+          - cy
+          - da
+          - de
+          - dsb
+          - el
+          - en
+          - en-au
+          - en-gb
+          - eo
+          - es
+          - es-ar
+          - es-co
+          - es-mx
+          - es-ni
+          - es-ve
+          - et
+          - eu
+          - fa
+          - fi
+          - fr
+          - fy
+          - ga
+          - gd
+          - gl
+          - he
+          - hi
+          - hr
+          - hsb
+          - hu
+          - hy
+          - ia
+          - id
+          - ig
+          - io
+          - is
+          - it
+          - ja
+          - ka
+          - kab
+          - kk
+          - km
+          - kn
+          - ko
+          - ky
+          - lb
+          - lt
+          - lv
+          - mk
+          - ml
+          - mn
+          - mr
+          - ms
+          - my
+          - nb
+          - ne
+          - nl
+          - nn
+          - os
+          - pa
+          - pl
+          - pt
+          - pt-br
+          - ro
+          - ru
+          - sk
+          - sl
+          - sq
+          - sr
+          - sr-latn
+          - sv
+          - sw
+          - ta
+          - te
+          - tg
+          - th
+          - tk
+          - tr
+          - tt
+          - udm
+          - ug
+          - uk
+          - ur
+          - uz
+          - vi
+          - zh-hans
+          - zh-hant
+      tags:
+      - schema
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      - {}
+      responses:
+        '200':
+          content:
+            application/vnd.oai.openapi:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/yaml:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/vnd.oai.openapi+json:
+              schema:
+                type: object
+                additionalProperties: {}
+            application/json:
+              schema:
+                type: object
+                additionalProperties: {}
+          description: ''
+components:
+  schemas:
+    AuthToken:
+      type: object
+      properties:
+        token:
+          type: string
+          readOnly: true
+      required:
+      - token
+    AuthTokenRequest:
+      type: object
+      properties:
+        username:
+          type: string
+          writeOnly: true
+          minLength: 1
+          title: İstifadəçi adı
+        password:
+          type: string
+          writeOnly: true
+          minLength: 1
+          title: Şifrə
+      required:
+      - password
+      - username
+    Case:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        documents:
+          type: array
+          items:
+            $ref: '#/components/schemas/Document'
+          readOnly: true
+        title:
+          type: string
+          maxLength: 200
+        supplier:
+          type: string
+          maxLength: 200
+        status:
+          type: string
+          readOnly: true
+        revision:
+          type: integer
+          readOnly: true
+        report:
+          readOnly: true
+        decision:
+          type: string
+          readOnly: true
+        decision_note:
+          type: string
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        updated_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - created_at
+      - decision
+      - decision_note
+      - documents
+      - id
+      - report
+      - revision
+      - status
+      - title
+      - updated_at
+    CaseRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          minLength: 1
+          maxLength: 200
+        supplier:
+          type: string
+          maxLength: 200
+      required:
+      - title
+    CompareRequest:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        mappings:
+          type: array
+          items:
+            $ref: '#/components/schemas/MappingRequest'
+    DataRequest:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        data: {}
+        note:
+          type: string
+          minLength: 1
+          maxLength: 1000
+      required:
+      - data
+      - kind
+      - note
+    DecisionEnum:
+      enum:
+      - approved
+      - disputed
+      - needs_review
+      type: string
+      description: |-
+        * `approved` - approved
+        * `disputed` - disputed
+        * `needs_review` - needs_review
+    Document:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          readOnly: true
+        kind:
+          allOf:
+          - $ref: '#/components/schemas/KindEnum'
+          readOnly: true
+        original_name:
+          type: string
+          readOnly: true
+        data:
+          readOnly: true
+        extraction_status:
+          type: string
+          readOnly: true
+        error:
+          type: string
+          readOnly: true
+        usage:
+          readOnly: true
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+        case:
+          type: string
+          format: uuid
+          readOnly: true
+      required:
+      - case
+      - created_at
+      - data
+      - error
+      - extraction_status
+      - id
+      - kind
+      - original_name
+      - usage
+    Event:
+      type: object
+      properties:
+        id:
+          type: integer
+          readOnly: true
+        actor:
+          type: integer
+          nullable: true
+        action:
+          type: string
+          maxLength: 50
+        payload: {}
+        created_at:
+          type: string
+          format: date-time
+          readOnly: true
+      required:
+      - action
+      - created_at
+      - id
+    KindEnum:
+      enum:
+      - order
+      - receipt
+      - invoice
+      type: string
+      description: |-
+        * `order` - Satınalma sifarişi
+        * `receipt` - Qəbul sənədi
+        * `invoice` - Faktura
+    MappingRequest:
+      type: object
+      properties:
+        order:
+          type: integer
+          minimum: 0
+        receipt:
+          type: integer
+          minimum: 0
+        invoice:
+          type: integer
+          minimum: 0
+      required:
+      - invoice
+      - order
+      - receipt
+    PaginatedCaseList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Case'
+    PaginatedEventList:
+      type: object
+      required:
+      - count
+      - results
+      properties:
+        count:
+          type: integer
+          example: 123
+        next:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=4
+        previous:
+          type: string
+          nullable: true
+          format: uri
+          example: http://api.example.org/accounts/?page=2
+        results:
+          type: array
+          items:
+            $ref: '#/components/schemas/Event'
+    ReviewRequest:
+      type: object
+      properties:
+        revision:
+          type: integer
+          minimum: 0
+        decision:
+          $ref: '#/components/schemas/DecisionEnum'
+        note:
+          type: string
+          minLength: 1
+          maxLength: 2000
+      required:
+      - decision
+      - note
+      - revision
+    UploadRequest:
+      type: object
+      properties:
+        kind:
+          $ref: '#/components/schemas/KindEnum'
+        file:
+          type: string
+          format: binary
+      required:
+      - file
+      - kind
+  securitySchemes:
+    cookieAuth:
+      type: apiKey
+      in: cookie
+      name: sessionid
+    tokenAuth:
+      type: apiKey
+      in: header
+      name: Authorization
+      description: Token-based authentication with required prefix "Token"

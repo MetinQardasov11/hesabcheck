@@ -1,0 +1,260 @@
+import copy
+import tempfile
+from types import SimpleNamespace
+from unittest.mock import patch
+from django.contrib.auth import get_user_model
+from django.test import SimpleTestCase, override_settings
+from django.core.files.uploadedfile import SimpleUploadedFile
+from rest_framework.test import APITestCase
+from rest_framework.exceptions import ValidationError
+from .models import Case, Document
+from .demo import document
+from .engine import compare
+from .schemas import validate_data
+from .ai import AIUnavailable
+
+def docs(received='100', invoiced='100', price='12.00'):
+    return [SimpleNamespace(id=k, kind=k, data=document(k, quantity=received if k == 'receipt' else invoiced if k == 'invoice' else '100', price=price if k == 'invoice' else '12.00')) for k in ['order', 'receipt', 'invoice']]
+
+class MatchingTests(SimpleTestCase):
+    def test_short_delivery_240(self):
+        result = compare(docs('80'))
+        self.assertEqual((result['status'], result['disputed_amount']), ('mismatch', '240.00'))
+        self.assertTrue(result['amount_complete'])
+    def test_matching(self):
+        self.assertEqual(compare(docs())['status'], 'matched')
+    def test_price_and_quantity_no_double_count(self):
+        self.assertEqual(compare(docs('80', price='13'))['disputed_amount'], '340.00')
+    def test_currency_not_summed(self):
+        rows = docs('80'); rows[-1].data['currency'] = 'USD'
+        result = compare(rows)
+        self.assertEqual(result['status'], 'needs_review')
+        self.assertEqual(result['disputed_amount'], '0.00')
+    def test_missing_quantity(self):
+        rows = docs(); rows[1].data['lines'][0]['quantity'] = None
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_packaging(self):
+        rows = docs(); rows[1].data['lines'][0]['pack_size'] = '10'
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_missing_document(self):
+        self.assertEqual(compare(docs()[:2])['status'], 'needs_review')
+    def test_missing_evidence(self):
+        rows = docs(); rows[0].data['lines'][0]['source']['quantity']['page'] = None
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_empty_document(self):
+        rows = docs(); rows[1].data['lines'] = []
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_duplicate_sku_requires_review(self):
+        rows = docs(); rows[0].data['lines'] *= 2
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_unknown_names_manual_mapping(self):
+        rows = docs()
+        for i, doc in enumerate(rows):
+            doc.data['lines'][0]['sku'] = None
+            doc.data['lines'][0]['name'] = f'Name in language {i}'
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+        self.assertEqual(compare(rows, [{'order': 0, 'receipt': 0, 'invoice': 0}])['status'], 'matched')
+    def test_mapping_reuse_or_invalid(self):
+        mapping = {'order': 0, 'receipt': 0, 'invoice': 0}
+        with self.assertRaises(ValueError):
+            compare(docs(), [mapping, mapping])
+        with self.assertRaises(ValueError):
+            compare(docs(), [{'order': -1, 'receipt': 0, 'invoice': 0}])
+    def test_arithmetic(self):
+        rows = docs(); rows[-1].data['lines'][0]['line_total'] = '1201'
+        self.assertEqual(compare(rows)['status'], 'mismatch')
+        self.assertFalse(compare(rows)['amount_complete'])
+    def test_invalid_numeric_data(self):
+        for bad in ['NaN', 'Infinity', '-1', '1e9999', '0.00000001']:
+            data = document('order'); data['lines'][0]['quantity'] = bad
+            with self.assertRaises(ValidationError):
+                validate_data(data)
+    def test_warning_never_auto_approved(self):
+        rows = docs(); rows[-1].data['warnings'] = ['ƏDV daxildir']
+        self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_fractional_amount(self):
+        rows = docs()
+        for doc in rows:
+            doc.data = document(doc.kind, '0.3', '0.1')
+        self.assertEqual(compare(rows)['status'], 'matched')
+
+class WorkflowTests(APITestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.setting = override_settings(MEDIA_ROOT=self.temp.name)
+        self.setting.enable()
+        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(self.setting.disable)
+        self.user = get_user_model().objects.create_user(username='tester', password='Strong-test-pass-391')
+        self.client.force_authenticate(self.user)
+        response = self.client.post('/api/cases/', {'title': 'Test', 'supplier': 'Vendor'})
+        self.assertEqual(response.status_code, 201)
+        self.url = f'/api/cases/{response.data["id"]}/'
+    def fill(self, received='80'):
+        for kind in ['order', 'receipt', 'invoice']:
+            response = self.client.post(self.url + 'document-data/', {'kind': kind, 'data': document(kind, received if kind == 'receipt' else '100'), 'note': 'Manual input'}, format='json')
+            self.assertEqual(response.status_code, 200, response.data)
+    def test_end_to_end_and_audit(self):
+        self.fill()
+        response = self.client.post(self.url + 'compare/', {}, format='json')
+        self.assertEqual(response.data['report']['disputed_amount'], '240.00')
+        revision = response.data['revision']
+        response = self.client.post(self.url + 'review/', {'revision': revision, 'decision': 'disputed', 'note': '20 ədəd çatışmır'}, format='json')
+        self.assertEqual(response.status_code, 200)
+        letter = self.client.post(self.url + 'dispute-letter/').data
+        self.assertIn('240.00', letter['body'])
+        self.assertFalse(letter['sent'])
+        self.assertEqual(self.client.get(self.url + 'report/').status_code, 200)
+        self.assertGreaterEqual(len(self.client.get(self.url + 'history/').data), 6)
+    def test_correction_invalidates_report(self):
+        self.fill('100')
+        result = self.client.post(self.url + 'compare/', {}, format='json').data
+        self.assertEqual(self.client.post(self.url + 'review/', {'revision': result['revision'], 'decision': 'approved', 'note': 'Yoxlanıb'}, format='json').status_code, 200)
+        self.client.post(self.url + 'document-data/', {'kind': 'receipt', 'data': document('receipt', '80'), 'note': 'Correction'}, format='json')
+        case = self.client.get(self.url).data
+        self.assertEqual((case['report'], case['decision'], case['status']), ({}, '', 'draft'))
+    def test_access_isolation(self):
+        other = get_user_model().objects.create_user(username='other')
+        self.client.force_authenticate(other)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+        self.assertEqual(self.client.post(self.url + 'compare/').status_code, 404)
+        self.client.force_authenticate(None)
+        self.assertEqual(self.client.get('/api/cases/').status_code, 401)
+    def test_stale_or_false_approval(self):
+        self.fill()
+        result = self.client.post(self.url + 'compare/', {}, format='json').data
+        self.assertEqual(self.client.post(self.url + 'review/', {'revision': 0, 'decision': 'disputed', 'note': 'Old'}, format='json').status_code, 409)
+        self.assertEqual(self.client.post(self.url + 'review/', {'revision': result['revision'], 'decision': 'approved', 'note': 'Bad'}, format='json').status_code, 400)
+    def test_upload_signature_and_download(self):
+        bad = SimpleUploadedFile('evil.pdf', b'<html>bad</html>')
+        self.assertEqual(self.client.post(self.url + 'documents/', {'kind': 'order', 'file': bad}).status_code, 400)
+        good = SimpleUploadedFile('order.txt', b'100 units 12 AZN')
+        response = self.client.post(self.url + 'documents/', {'kind': 'order', 'file': good})
+        self.assertEqual(response.status_code, 201)
+        download = self.client.get(self.url + f'documents/{response.data["id"]}/download/')
+        self.assertEqual(b''.join(download.streaming_content), b'100 units 12 AZN')
+        download.close()
+    @override_settings(GEMINI_API_KEY='')
+    def test_no_key_is_explicit(self):
+        file = SimpleUploadedFile('order.txt', b'100 units')
+        self.client.post(self.url + 'documents/', {'kind': 'order', 'file': file})
+        self.assertEqual(self.client.post(self.url + 'extract/').status_code, 503)
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.extract', side_effect=AIUnavailable('Unreadable document'))
+    def test_ai_failure_needs_review(self, mock):
+        self.client.post(self.url + 'documents/', {'kind': 'order', 'file': SimpleUploadedFile('order.txt', b'?')})
+        result = self.client.post(self.url + 'extract/').data
+        self.assertEqual(result['documents'][0]['extraction_status'], 'failed')
+        result = self.client.post(self.url + 'compare/', {}, format='json').data
+        self.assertEqual(result['status'], 'needs_review')
+    def test_token_login(self):
+        self.client.force_authenticate(None)
+        result = self.client.post('/api/auth/token/', {'username': 'tester', 'password': 'Strong-test-pass-391'})
+        self.assertEqual(result.status_code, 200)
+        self.client.credentials(HTTP_AUTHORIZATION='Token ' + result.data['token'])
+        self.assertEqual(self.client.get(self.url).status_code, 200)
+
+    def test_manual_mapping_requires_current_revision(self):
+        self.fill()
+        mappings = [{'order': 0, 'receipt': 0, 'invoice': 0}]
+        self.assertEqual(self.client.post(self.url + 'compare/', {'mappings': mappings}, format='json').status_code, 409)
+        revision = self.client.get(self.url).data['revision']
+        result = self.client.post(self.url + 'compare/', {'revision': revision, 'mappings': mappings}, format='json')
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.data['report']['disputed_amount'], '240.00')
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_successful_extraction(self, mock):
+        mock.return_value = (document('order'), {'input_tokens': 10, 'output_tokens': 20})
+        self.client.post(self.url + 'documents/', {'kind': 'order', 'file': SimpleUploadedFile('order.txt', b'100 units')})
+        response = self.client.post(self.url + 'extract/')
+        self.assertEqual(response.status_code, 200)
+        extracted = response.data['documents'][0]
+        self.assertEqual(extracted['extraction_status'], 'extracted')
+        self.assertEqual(extracted['usage']['input_tokens'], 10)
+        self.assertEqual(extracted['data']['lines'][0]['quantity'], '100')
+
+    def test_seed_demo_command(self):
+        from io import StringIO
+        from django.core.management import call_command
+        output = StringIO()
+        call_command('seed_demo', username='tester', stdout=output)
+        self.assertIn('mismatch: 240.00 AZN', output.getvalue())
+        self.assertIn('needs_review:', output.getvalue())
+        self.assertIn('matched:', output.getvalue())
+
+@override_settings(GEMINI_API_KEY='test-key', GEMINI_MODEL='gemini-test')
+class GeminiAdapterTests(SimpleTestCase):
+    def response(self, text='{"ok": true}', finish='STOP'):
+        from google.genai import types
+        return types.GenerateContentResponse(
+            candidates=[types.Candidate(finish_reason=finish, content=types.Content(parts=[types.Part.from_text(text=text)]))],
+            usage_metadata=types.GenerateContentResponseUsageMetadata(prompt_token_count=10, candidates_token_count=5, total_token_count=15),
+        )
+
+    def call(self):
+        from .ai import request_json
+        from .schemas import obj
+        from google.genai import types
+        return request_json([types.Part.from_text(text='test')], obj({'ok': {'type': 'boolean'}}), 'Extract.')
+
+    @patch('matching.ai.genai.Client')
+    def test_json_and_usage(self, mock):
+        client = mock.return_value.__enter__.return_value
+        client.models.generate_content.return_value = self.response()
+        data, usage = self.call()
+        self.assertEqual(data, {'ok': True})
+        self.assertEqual(usage['total_tokens'], 15)
+        self.assertEqual(usage['provider'], 'gemini')
+        self.assertFalse(mock.call_args.kwargs['vertexai'])
+        self.assertEqual(client.models.generate_content.call_args.kwargs['config'].response_mime_type, 'application/json')
+
+    @patch('matching.ai.genai.Client')
+    def test_truncated_blocked_and_malformed_responses(self, mock):
+        client = mock.return_value.__enter__.return_value
+        from google.genai import types
+        for response in [self.response(finish='MAX_TOKENS'), types.GenerateContentResponse(candidates=[]),
+                         self.response('not JSON'), self.response('{"ok": "wrong type"}')]:
+            with self.subTest(response=response):
+                client.models.generate_content.return_value = response
+                with self.assertRaises(AIUnavailable):
+                    self.call()
+
+    @patch('matching.ai.genai.Client')
+    def test_quota_error_is_safe_and_actionable(self, mock):
+        from google.genai import errors
+        mock.return_value.__enter__.return_value.models.generate_content.side_effect = errors.ClientError(
+            429, {'error': {'message': 'sensitive-provider-detail'}})
+        with self.assertRaises(AIUnavailable) as caught:
+            self.call()
+        self.assertIn('kvotası', str(caught.exception))
+        self.assertNotIn('sensitive-provider-detail', str(caught.exception))
+
+    @patch('matching.ai.genai.Client')
+    def test_timeout(self, mock):
+        import httpx
+        mock.return_value.__enter__.return_value.models.generate_content.side_effect = httpx.ReadTimeout('secret')
+        with self.assertRaises(AIUnavailable) as caught:
+            self.call()
+        self.assertIn('vaxt limiti', str(caught.exception))
+
+    @patch('matching.ai.request_json')
+    def test_pdf_and_image_parts(self, mock):
+        from django.core.files.base import ContentFile
+        from .ai import extract
+        mock.return_value = (document('order'), {})
+        for name, raw, mime in [('order.pdf', b'%PDF-test', 'application/pdf'), ('order.png', b'png-bytes', 'image/png')]:
+            doc = SimpleNamespace(file=ContentFile(raw), original_name=name, kind='order')
+            extract(doc)
+            part = mock.call_args.args[0][0]
+            self.assertEqual(part.inline_data.mime_type, mime)
+            self.assertEqual(part.inline_data.data, raw)
+
+    @override_settings(GEMINI_API_KEY='')
+    @patch('matching.ai.genai.Client')
+    def test_smoke_command_without_key_makes_no_request(self, mock):
+        from django.core.management import call_command, CommandError
+        with self.assertRaises(CommandError):
+            call_command('check_gemini')
+        mock.assert_not_called()
