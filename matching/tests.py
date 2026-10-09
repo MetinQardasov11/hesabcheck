@@ -271,12 +271,12 @@ class WorkflowTests(APITestCase):
         self.assertEqual(by_kind['invoice']['usage']['pages'], [3, 4])
         self.assertTrue(all(doc['usage']['bundle'] and doc['extraction_status'] == 'extracted' for doc in by_kind.values()))
         self.assertEqual(response.data['status'], 'draft')
-        download = self.client.get(self.url + f'documents/{by_kind["receipt"]["id"]}/download/')
-        self.assertEqual(b''.join(download.streaming_content), b'%PDF-bundle')
-        download.close()
         result = self.client.post(self.url + 'compare/', {}, format='json').data
         self.assertEqual(result['report']['disputed_amount'], '240.00')
         self.assertEqual(self.client.get(self.url + 'history/').data[-2]['action'], 'bundle_extracted')
+        # Fayl birbaşa yaddaşdan yoxlanır: streaming cavabın bağlanması PostgreSQL-də test bağlantısını bağlayır.
+        with Document.objects.get(id=by_kind['receipt']['id']).file.open('rb') as stored:
+            self.assertEqual(stored.read(), b'%PDF-bundle')
 
     @override_settings(GEMINI_API_KEY='test')
     @patch('matching.ai.request_json')
