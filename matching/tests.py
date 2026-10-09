@@ -134,6 +134,18 @@ class WorkflowTests(APITestCase):
         download = self.client.get(self.url + f'documents/{response.data["id"]}/download/')
         self.assertEqual(b''.join(download.streaming_content), b'100 units 12 AZN')
         download.close()
+    def test_delete_case_removes_documents_and_files(self):
+        response = self.client.post(self.url + 'documents/', {'kind': 'order', 'file': SimpleUploadedFile('order.txt', b'100 units')})
+        stored = Document.objects.get(id=response.data['id']).file
+        other = get_user_model().objects.create_user(username='other')
+        self.client.force_authenticate(other)
+        self.assertEqual(self.client.delete(self.url).status_code, 404)
+        self.client.force_authenticate(self.user)
+        with self.captureOnCommitCallbacks(execute=True):
+            self.assertEqual(self.client.delete(self.url).status_code, 204)
+        self.assertEqual(self.client.get(self.url).status_code, 404)
+        self.assertFalse(Case.objects.exists() or Document.objects.exists())
+        self.assertFalse(stored.storage.exists(stored.name))
     @override_settings(GEMINI_API_KEY='')
     def test_no_key_is_explicit(self):
         file = SimpleUploadedFile('order.txt', b'100 units')

@@ -22,7 +22,7 @@ class LoginThrottle(AnonRateThrottle):
 class LoginView(ObtainAuthToken):
     throttle_classes = [LoginThrottle]
 
-class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, viewsets.GenericViewSet):
+class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.CreateModelMixin, mixins.DestroyModelMixin, viewsets.GenericViewSet):
     serializer_class = CaseSerializer
     lookup_value_regex = '[0-9a-fA-F-]{36}'
     def get_queryset(self):
@@ -37,6 +37,13 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         with transaction.atomic():
             case = serializer.save(owner=self.request.user)
             self.event(case, 'created')
+
+    def perform_destroy(self, case):
+        with transaction.atomic():
+            files = [doc.file for doc in case.documents.all() if doc.file]
+            case.delete()
+            # Fayllar yalnız baza silinməsi uğurlu olduqdan sonra diskdən silinir.
+            transaction.on_commit(lambda: [file.storage.delete(file.name) for file in files])
 
     def locked(self):
         return get_object_or_404(Case.objects.select_for_update(), pk=self.kwargs['pk'], owner=self.request.user)

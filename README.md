@@ -38,6 +38,7 @@ Cavabdakı `token` ilə bütün biznes endpoint-lərinə `Authorization: Token Y
 |---|---|---|
 | GET / POST | `/api/cases/` | Səhifələnmiş siyahı / yeni yoxlama |
 | GET | `/api/cases/{id}/` | Sənədlər, hesabat və cari `revision` |
+| DELETE | `/api/cases/{id}/` | Yoxlamanı, sənədlərini, fayllarını və tarixçəsini silir (204) |
 | POST | `/api/cases/{id}/documents/` | `multipart/form-data`: `kind`, `file` |
 | POST | `/api/cases/{id}/extract/` | Yüklənmiş sənədlərdən real AI çıxarışı |
 | POST | `/api/cases/{id}/document-data/` | Manual çıxarış və ya düzəliş: `kind`, `data`, `note` |
