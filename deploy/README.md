@@ -1,7 +1,7 @@
 # HesabCheck production
 
 - Host: `178.105.97.126`
-- URL: `https://history.testgrelo.online/api/docs/`
+- URL: `https://hesabcheck.testgrelo.online/api/docs/`
 - Root: `/root/hesabcheck`
 - Source: `/root/hesabcheck/current` → `releases/<commit SHA>`
 - Runtime configuration: `/root/hesabcheck/.env` (root-only, never committed)
@@ -21,7 +21,9 @@ The root password, Gemini key, database password and Django secret are not store
 
 Create `/root/hesabcheck/{bin,releases,backups,media}`, make media owned by 10001:10001, store production values using `production.env.example` as the template, and install `receive.sh` at `bin/receive` (mode 700). Keep `.env` mode 600. Add the **public** deploy key to `authorized_keys` with the forced command above and `restrict`.
 
-This server already has a shared Docker nginx and a valid automatically renewed Let's Encrypt certificate. `configure_proxy.py` changes only the HTTPS `history.testgrelo.online` virtual host in `/root/hospital-appointment-demo/nginx.conf`, preserving the file inode, making a backup, running nginx validation and reloading. The existing HTTP → HTTPS redirect and ACME challenge location remain. The old domain backend is no longer reachable through this hostname; its containers/data remain untouched. nginx resolves `hesabcheck-web` through Docker DNS after container replacement.
+The shared Docker nginx serves the new `hesabcheck.testgrelo.online` hostname. Point its DNS A record to `178.105.97.126` before deploying (remove any unrelated AAAA record). `configure_proxy.py` creates the HTTP ACME challenge host, obtains a dedicated Let's Encrypt certificate using the server's existing Certbot account, then enables HTTPS. The existing renewal timer handles renewal. Other domains are preserved. If certificate issuance fails, deployment fails visibly and can be retried after DNS is corrected.
+
+Compose explicitly sets Django allowed hosts, CSRF and CORS origins for the new domain, overriding old values in the server .env. nginx resolves `hesabcheck-web` through Docker DNS.
 
 This proxy configuration is specific to this server. If the shared nginx is replaced or its Docker network is renamed, update `compose.yaml` and `configure_proxy.py` accordingly.
 

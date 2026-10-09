@@ -26,7 +26,7 @@ if ! "${COMPOSE[@]}" up -d --no-deps --wait --wait-timeout 150 web; then
   exit 1
 fi
 WEB_ID=$("${COMPOSE[@]}" ps -q web)
-docker exec "$WEB_ID" python -c "import urllib.request,json; r=urllib.request.Request('http://127.0.0.1:8000/health/',headers={'Host':'history.testgrelo.online','X-Forwarded-Proto':'https'}); d=json.load(urllib.request.urlopen(r,timeout=5)); assert d['release']=='$SHA'"
+docker exec "$WEB_ID" python -c "import urllib.request,json; r=urllib.request.Request('http://127.0.0.1:8000/health/',headers={'Host':'hesabcheck.testgrelo.online','X-Forwarded-Proto':'https'}); d=json.load(urllib.request.urlopen(r,timeout=5)); assert d['release']=='$SHA'"
 python3 "$RELEASE/deploy/configure_proxy.py"
 ln -sfn "$RELEASE" "$ROOT/current"
 printf '%s\n' "$PREVIOUS" > "$ROOT/previous-sha"
