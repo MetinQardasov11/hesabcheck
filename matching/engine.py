@@ -95,12 +95,14 @@ def compare(documents, mappings=None):
         rows = {k: lines[k][mapping[k]] for k in kinds}
         refs = {k: {'document_id': str(docs[k].id), 'line': mapping[k], 'values': rows[k]} for k in kinds}
         result = {'sources': refs, 'status': 'matched', 'differences': [], 'disputed_amount': None}
-        required = ('name', 'quantity', 'unit')
-        complete = all(all(row.get(f) is not None and row.get(f) != '' for f in required) for row in rows.values())
+        filled = lambda row, field: row.get(field) is not None and row.get(field) != ''
+        # Qəbul sənədində vahid sütunu çox vaxt olmur: onda sifariş və fakturanın vahidi əsas götürülür.
+        complete = (all(filled(row, 'name') and filled(row, 'quantity') for row in rows.values())
+                    and all(filled(rows[k], 'unit') for k in TWO_WAY))
         # Qablaşdırma heç bir sənəddə yazılmayıbsa eyni sayılır; yalnız bəzilərində yazılıbsa və ya fərqlidirsə yoxlama lazımdır.
         packs = [row.get('pack_size') for row in rows.values()]
         same_pack = all(p is None for p in packs) or (all(p is not None for p in packs) and len({D(p) for p in packs}) == 1)
-        compatible = complete and same_pack and len({normalize_unit(r['unit']) for r in rows.values()}) == 1
+        compatible = complete and same_pack and len({normalize_unit(r['unit']) for r in rows.values() if filled(r, 'unit')}) == 1
         if not compatible or not currency_ok or any(rows[k]['unit_price'] is None for k in ('order', 'invoice')):
             result['status'] = 'needs_review'
             result['differences'].append('Miqdar, vahid, qablaşdırma, qiymət və ya valyuta yoxlanmalıdır.')

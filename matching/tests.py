@@ -36,6 +36,11 @@ class MatchingTests(SimpleTestCase):
     def test_packaging(self):
         rows = docs(); rows[1].data['lines'][0]['pack_size'] = '10'
         self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_receipt_without_unit_uses_order_and_invoice_unit(self):
+        rows = docs('80'); rows[1].data['lines'][0]['unit'] = None
+        self.assertEqual(compare(rows)['disputed_amount'], '240.00')
+        rows[0].data['lines'][0]['unit'] = None
+        self.assertEqual(compare(rows)['status'], 'needs_review')
     def test_pack_size_not_stated_anywhere(self):
         rows = docs('80')
         for doc in rows:
@@ -256,6 +261,21 @@ class WorkflowTests(APITestCase):
         response = self.client.post(self.url + 'suggestions/')
         self.assertEqual(response.status_code, 200, response.data)
         self.assertNotIn('receipt', mock.call_args.args[1]['properties']['suggestions']['items']['properties'])
+        self.assertIn('"index": 0', mock.call_args.args[0][0].text)
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_invalid_suggestions_are_dropped_individually(self, mock):
+        self.fill()
+        mock.return_value = ({'suggestions': [
+            {'order': 1, 'receipt': 1, 'invoice': 1, 'reason': 'Diapazondan kənar', 'confidence': 0.99},
+            {'order': 0, 'receipt': 0, 'invoice': 0, 'reason': 'Eyni məhsul', 'confidence': 0.9},
+            {'order': 0, 'receipt': 0, 'invoice': 0, 'reason': 'Təkrar', 'confidence': 0.5},
+            {'order': 0, 'receipt': 0, 'invoice': 0, 'reason': 'Səhv əminlik', 'confidence': 7},
+        ]}, {})
+        data = self.client.post(self.url + 'suggestions/').data
+        self.assertEqual([item['reason'] for item in data['suggestions']], ['Eyni məhsul'])
+        self.assertEqual(data['discarded'], 3)
 
     @override_settings(GEMINI_API_KEY='test')
     @patch('matching.ai.request_json')

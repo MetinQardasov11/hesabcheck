@@ -196,11 +196,7 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         docs = [by_kind[k] for k in kinds]
         try:
             result, usage = ai.suggest(docs)
-            mappings = [{k: item[k] for k in kinds} for item in result['suggestions']]
-            compare(docs, mappings)  # Validate ranges and one-to-one mapping.
-            if any(not 0 <= item['confidence'] <= 1 for item in result['suggestions']):
-                raise ValueError('Etibarsız əminlik göstəricisi.')
-        except (ai.AIUnavailable, ValueError) as exc:
+        except ai.AIUnavailable as exc:
             return Response({'detail': str(exc)}, status=503)
         return Response({**result, 'usage': usage, 'revision': case.revision, 'requires_human_confirmation': True})
 
