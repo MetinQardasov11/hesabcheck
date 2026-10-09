@@ -54,6 +54,32 @@ class MatchingTests(SimpleTestCase):
             doc.data['lines'][0]['name'] = f'Name in language {i}'
         self.assertEqual(compare(rows)['status'], 'needs_review')
         self.assertEqual(compare(rows, [{'order': 0, 'receipt': 0, 'invoice': 0}])['status'], 'matched')
+    def test_two_way_without_receipt(self):
+        order, _, invoice = docs(price='13')
+        result = compare([order, invoice])
+        self.assertEqual((result['mode'], result['status'], result['disputed_amount']), ('two_way', 'mismatch', '100.00'))
+        self.assertNotIn('receipt', result['matches'][0]['sources'])
+        self.assertTrue(result['notes'])
+        order, _, invoice = docs()
+        self.assertEqual(compare([order, invoice])['status'], 'matched')
+    def test_two_way_quantity_overbilling(self):
+        order, _, invoice = docs()
+        invoice.data['lines'][0]['quantity'] = '110'
+        invoice.data['lines'][0]['line_total'] = invoice.data['total'] = '1320.00'
+        result = compare([order, invoice])
+        self.assertEqual((result['status'], result['disputed_amount']), ('mismatch', '120.00'))
+    def test_unreadable_receipt_does_not_fall_back_to_two_way(self):
+        rows = docs(); rows[1].data = {}
+        result = compare(rows)
+        self.assertEqual((result['mode'], result['status']), ('three_way', 'needs_review'))
+    def test_two_way_requires_order_and_invoice(self):
+        result = compare(docs()[:1])
+        self.assertEqual((result['status'], result['issues'][0]['code']), ('needs_review', 'missing_document'))
+    def test_two_way_mapping_keys(self):
+        order, _, invoice = docs()
+        self.assertEqual(compare([order, invoice], [{'order': 0, 'invoice': 0}])['status'], 'matched')
+        with self.assertRaises(ValueError):
+            compare([order, invoice], [{'order': 0, 'receipt': 0, 'invoice': 0}])
     def test_mapping_reuse_or_invalid(self):
         mapping = {'order': 0, 'receipt': 0, 'invoice': 0}
         with self.assertRaises(ValueError):
@@ -186,6 +212,104 @@ class WorkflowTests(APITestCase):
         self.assertEqual(extracted['extraction_status'], 'extracted')
         self.assertEqual(extracted['usage']['input_tokens'], 10)
         self.assertEqual(extracted['data']['lines'][0]['quantity'], '100')
+
+    def test_two_way_workflow_and_letter(self):
+        for kind, quantity in [('order', '100'), ('invoice', '110')]:
+            data = document(kind, quantity)
+            self.client.post(self.url + 'document-data/', {'kind': kind, 'data': data, 'note': 'Manual'}, format='json')
+        result = self.client.post(self.url + 'compare/', {}, format='json').data
+        self.assertEqual((result['report']['mode'], result['report']['disputed_amount']), ('two_way', '120.00'))
+        result = self.client.post(self.url + 'compare/', {'revision': result['revision'], 'mappings': [{'order': 0, 'invoice': 0}]}, format='json')
+        self.assertEqual(result.status_code, 200, result.data)
+        letter = self.client.post(self.url + 'dispute-letter/').data
+        self.assertIn('sifariş 100, faktura 110', letter['body'])
+        self.assertIn('sifariş və faktura əsasında', letter['body'])
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_two_way_suggestions(self, mock):
+        for kind in ['order', 'invoice']:
+            self.client.post(self.url + 'document-data/', {'kind': kind, 'data': document(kind), 'note': 'Manual'}, format='json')
+        mock.return_value = ({'suggestions': [{'order': 0, 'invoice': 0, 'reason': 'Eyni məhsul', 'confidence': 0.9}]}, {})
+        response = self.client.post(self.url + 'suggestions/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertNotIn('receipt', mock.call_args.args[1]['properties']['suggestions']['items']['properties'])
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_extract_only_uploaded_files_keeps_manual_data(self, mock):
+        mock.return_value = (document('order'), {'input_tokens': 1})
+        self.client.post(self.url + 'documents/', {'kind': 'order', 'file': SimpleUploadedFile('order.txt', b'100 units')})
+        manual = document('invoice', '90')
+        self.client.post(self.url + 'document-data/', {'kind': 'invoice', 'data': manual, 'note': 'Manual'}, format='json')
+        response = self.client.post(self.url + 'extract/')
+        self.assertEqual(response.status_code, 200, response.data)
+        self.assertEqual(mock.call_count, 1)
+        by_kind = {doc['kind']: doc for doc in response.data['documents']}
+        self.assertEqual(by_kind['order']['extraction_status'], 'extracted')
+        self.assertEqual((by_kind['invoice']['extraction_status'], by_kind['invoice']['data']), ('manual', manual))
+        self.assertIn('extract only the order document', mock.call_args.args[2])
+
+    def test_extract_requires_a_file(self):
+        self.client.post(self.url + 'document-data/', {'kind': 'order', 'data': document('order'), 'note': 'Manual'}, format='json')
+        with override_settings(GEMINI_API_KEY='test'):
+            self.assertEqual(self.client.post(self.url + 'extract/').status_code, 400)
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_bundle_splits_documents(self, mock):
+        mock.return_value = ({'documents': [
+            {'kind': 'order', 'pages': [1], 'data': document('order')},
+            {'kind': 'receipt', 'pages': [2], 'data': document('receipt', '80')},
+            {'kind': 'invoice', 'pages': [3, 4], 'data': document('invoice')},
+        ]}, {'total_tokens': 50})
+        bundle = SimpleUploadedFile('scan.pdf', b'%PDF-bundle')
+        response = self.client.post(self.url + 'bundle/', {'file': bundle})
+        self.assertEqual(response.status_code, 200, response.data)
+        by_kind = {doc['kind']: doc for doc in response.data['documents']}
+        self.assertEqual(set(by_kind), {'order', 'receipt', 'invoice'})
+        self.assertEqual(by_kind['invoice']['usage']['pages'], [3, 4])
+        self.assertTrue(all(doc['usage']['bundle'] and doc['extraction_status'] == 'extracted' for doc in by_kind.values()))
+        self.assertEqual(response.data['status'], 'draft')
+        download = self.client.get(self.url + f'documents/{by_kind["receipt"]["id"]}/download/')
+        self.assertEqual(b''.join(download.streaming_content), b'%PDF-bundle')
+        download.close()
+        result = self.client.post(self.url + 'compare/', {}, format='json').data
+        self.assertEqual(result['report']['disputed_amount'], '240.00')
+        self.assertEqual(self.client.get(self.url + 'history/').data[-2]['action'], 'bundle_extracted')
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_bundle_partial_keeps_other_documents(self, mock):
+        manual = document('receipt', '80')
+        self.client.post(self.url + 'document-data/', {'kind': 'receipt', 'data': manual, 'note': 'Manual'}, format='json')
+        mock.return_value = ({'documents': [{'kind': 'order', 'pages': [1], 'data': document('order')},
+                                            {'kind': 'invoice', 'pages': [2], 'data': document('invoice')}]}, {})
+        response = self.client.post(self.url + 'bundle/', {'file': SimpleUploadedFile('scan.txt', 'Sifariş və faktura'.encode())})
+        by_kind = {doc['kind']: doc for doc in response.data['documents']}
+        self.assertEqual((by_kind['receipt']['extraction_status'], by_kind['receipt']['data']), ('manual', manual))
+
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_bundle_rejects_duplicates_empty_and_invalid(self, mock):
+        upload = lambda: self.client.post(self.url + 'bundle/', {'file': SimpleUploadedFile('scan.txt', b'text')})
+        mock.return_value = ({'documents': [{'kind': 'order', 'pages': [1], 'data': document('order')}] * 2}, {})
+        self.assertEqual(upload().status_code, 400)
+        mock.return_value = ({'documents': []}, {})
+        self.assertEqual(upload().status_code, 400)
+        broken = document('order'); broken['currency'] = 'manat'
+        mock.return_value = ({'documents': [{'kind': 'order', 'pages': [1], 'data': broken}]}, {})
+        self.assertEqual(upload().status_code, 503)
+        self.assertFalse(Document.objects.exists())
+        mock.side_effect = AIUnavailable('Kvota bitib')
+        self.assertEqual(upload().status_code, 503)
+        bad = self.client.post(self.url + 'bundle/', {'file': SimpleUploadedFile('scan.pdf', b'<html>')})
+        self.assertEqual(bad.status_code, 400)
+
+    @override_settings(GEMINI_API_KEY='')
+    def test_bundle_without_key(self):
+        response = self.client.post(self.url + 'bundle/', {'file': SimpleUploadedFile('scan.txt', b'text')})
+        self.assertEqual(response.status_code, 503)
 
     def test_seed_demo_command(self):
         from io import StringIO

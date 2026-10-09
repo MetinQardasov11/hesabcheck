@@ -40,7 +40,8 @@ Cavabdakı `token` ilə bütün biznes endpoint-lərinə `Authorization: Token Y
 | GET | `/api/cases/{id}/` | Sənədlər, hesabat və cari `revision` |
 | DELETE | `/api/cases/{id}/` | Yoxlamanı, sənədlərini, fayllarını və tarixçəsini silir (204) |
 | POST | `/api/cases/{id}/documents/` | `multipart/form-data`: `kind`, `file` |
-| POST | `/api/cases/{id}/extract/` | Yüklənmiş sənədlərdən real AI çıxarışı |
+| POST | `/api/cases/{id}/extract/` | Faylı olan sənədlərdən real AI çıxarışı (1–3 fayl; manual sənədlərə toxunmur) |
+| POST | `/api/cases/{id}/bundle/` | `multipart/form-data`: `file` — bir faylda olan sifariş/qəbul/fakturanı AI ilə ayırıb çıxarır |
 | POST | `/api/cases/{id}/document-data/` | Manual çıxarış və ya düzəliş: `kind`, `data`, `note` |
 | POST | `/api/cases/{id}/suggestions/` | AI məhsul uyğunlaşdırma təklifləri; avtomatik tətbiq edilmir |
 | POST | `/api/cases/{id}/compare/` | Deterministik müqayisə; boş `{}` avtomatik uyğunlaşdırır |
@@ -50,7 +51,13 @@ Cavabdakı `token` ilə bütün biznes endpoint-lərinə `Authorization: Token Y
 | GET | `/api/cases/{id}/history/` | Qərar və dəyişiklik tarixçəsi |
 | GET | `/api/cases/{id}/documents/{document_id}/download/` | Autentifikasiya ilə mənbə faylı |
 
-`kind`: `order`, `receipt`, `invoice`. Hər yoxlamada hər növdən bir sənəd var; yenisini yükləmək əvvəlkini əvəzləyir. Maksimum 10 MB: PDF, PNG, JPG, UTF-8 TXT. Fayllar açıq media URL ilə yayımlanmır.
+`kind`: `order`, `receipt`, `invoice`. Hər yoxlamada hər növdən bir sənəd var; yenisini yükləmək əvvəlkini əvəzləyir.
+
+**Qismən sənədlər.** `extract/` yalnız faylı olan sənədləri oxuyur; qalanlarını `document-data/` ilə manual daxil etmək olar.
+
+**Birləşmiş fayl.** `bundle/` bir PDF/şəkil/TXT içində olan sənədləri məzmununa görə ayırır. Hər tapılan növ üçün faylın surəti həmin sənədə bağlanır, `documents[].usage.bundle = true`, `usage.pages` isə həmin sənədin səhifələridir. Faylda tapılmayan növlərə toxunulmur. Eyni növdən iki sənəd və ya heç bir sənəd tapılmazsa 400, AI xətasında 503 qaytarılır. Sorğu sinxrondur (180 saniyəyə qədər).
+
+**İkitərəfli müqayisə.** Yoxlamada qəbul sənədi ümumiyyətlə yoxdursa, `compare/` sifariş ↔ faktura müqayisəsi aparır: `report.mode = "two_way"`, `report.notes` xəbərdarlıq verir, manual `mappings` yalnız `order` və `invoice` indekslərini saxlayır. Mübahisəli məbləğ: `max(0, faktura_miqdarı × faktura_qiyməti − sifariş_miqdarı × sifariş_qiyməti)`. Qəbul sənədi yüklənib, amma oxunmayıbsa, sistem ikitərəfli rejimə keçmir və insan yoxlaması tələb edir. Üçtərəfli hesabatda `mode = "three_way"`. Maksimum 10 MB: PDF, PNG, JPG, UTF-8 TXT. Fayllar açıq media URL ilə yayımlanmır.
 
 ### API açarı olmadan tam demo
 

@@ -10,16 +10,25 @@ def money(value):
 def identity(line):
     return ('sku', line['sku'].strip().casefold()) if line.get('sku') else ('name', (line.get('name') or '').strip().casefold())
 
+THREE_WAY = ('order', 'receipt', 'invoice')
+TWO_WAY = ('order', 'invoice')
+
 def compare(documents, mappings=None):
-    docs = {d.kind: d for d in documents}
+    all_docs = {d.kind: d for d in documents}
     issues, results = [], []
     total = D('0')
-    kinds = ('order', 'receipt', 'invoice')
+    # Qəbul sənədi ümumiyyətlə yoxdursa sifariş ↔ faktura müqayisəsi aparılır.
+    # Qəbul sənədi var, amma oxunmayıbsa, səssizcə ikitərəfli rejimə keçmirik.
+    kinds = THREE_WAY if 'receipt' in all_docs else TWO_WAY
+    mode = 'three_way' if kinds == THREE_WAY else 'two_way'
     def issue(code, message, **extra):
         issues.append({'code': code, 'message': message, **extra})
-    if set(docs) != set(kinds) or any(not d.data for d in docs.values()):
-        return {'status': 'needs_review', 'currency': None, 'disputed_amount': '0.00', 'amount_complete': False,
-                'issues': [{'code': 'missing_document', 'message': 'Üç sənədin məlumatı da tələb olunur.'}], 'matches': []}
+    if any(k not in all_docs or not all_docs[k].data for k in kinds):
+        message = ('Üç sənədin məlumatı da tələb olunur.' if mode == 'three_way'
+                   else 'Ən azı sifariş və fakturanın məlumatı tələb olunur.')
+        return {'status': 'needs_review', 'mode': mode, 'currency': None, 'disputed_amount': '0.00', 'amount_complete': False,
+                'issues': [{'code': 'missing_document', 'message': message}], 'matches': [], 'notes': []}
+    docs = {k: all_docs[k] for k in kinds}
     currencies = [docs[k].data['currency'] for k in kinds]
     currency_ok = all(currencies) and len(set(currencies)) == 1
     if not currency_ok:
@@ -71,14 +80,21 @@ def compare(documents, mappings=None):
             result['status'] = 'needs_review'
             result['differences'].append('Miqdar, vahid, qablaşdırma, qiymət və ya valyuta yoxlanmalıdır.')
         else:
-            ordered, received, invoiced = (D(rows[k]['quantity']) for k in kinds)
+            ordered, invoiced = D(rows['order']['quantity']), D(rows['invoice']['quantity'])
             price, charged = D(rows['order']['unit_price']), D(rows['invoice']['unit_price'])
-            if ordered != received or received != invoiced:
-                result['differences'].append('Sifariş, qəbul və faktura miqdarları fərqlidir.')
+            if 'receipt' in rows:
+                received = D(rows['receipt']['quantity'])
+                if ordered != received or received != invoiced:
+                    result['differences'].append('Sifariş, qəbul və faktura miqdarları fərqlidir.')
+                accepted = min(ordered, received)
+            else:
+                if ordered != invoiced:
+                    result['differences'].append('Sifariş və faktura miqdarları fərqlidir.')
+                accepted = ordered
             if price != charged:
                 result['differences'].append('Fakturanın vahid qiyməti sifarişdən fərqlidir.')
             # Net positive overbilling per line avoids counting quantity/price overlap twice.
-            disputed = max(D('0'), invoiced * charged - min(ordered, received) * price)
+            disputed = max(D('0'), invoiced * charged - accepted * price)
             result['disputed_amount'] = money(disputed)
             total += D(result['disputed_amount'])
             if result['differences']:
@@ -90,6 +106,7 @@ def compare(documents, mappings=None):
     review_codes = {'currency_review', 'incomplete_document', 'missing_evidence', 'missing_amount', 'missing_total', 'unmatched_line'}
     review = any(i['code'] in review_codes for i in issues) or any(r['status'] == 'needs_review' for r in results)
     mismatch = bool(issues) or any(r['status'] == 'mismatch' for r in results)
-    return {'status': 'needs_review' if review else 'mismatch' if mismatch else 'matched',
+    notes = [] if mode == 'three_way' else ['Qəbul sənədi olmadan sifariş ↔ faktura müqayisəsi: malların faktiki qəbulu yoxlanmayıb.']
+    return {'status': 'needs_review' if review else 'mismatch' if mismatch else 'matched', 'mode': mode,
             'currency': currencies[0] if currency_ok else None, 'disputed_amount': money(total),
-            'amount_complete': not review and not issues, 'issues': issues, 'matches': results}
+            'amount_complete': not review and not issues, 'issues': issues, 'matches': results, 'notes': notes}

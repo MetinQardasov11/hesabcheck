@@ -1,3 +1,4 @@
+from django.core.files.base import ContentFile
 from django.db import transaction
 from django.conf import settings
 from django.http import FileResponse
@@ -12,8 +13,8 @@ from rest_framework.throttling import AnonRateThrottle
 from drf_spectacular.utils import extend_schema, OpenApiParameter, OpenApiTypes
 from .models import Case, Document, AuditEvent
 from .serializers import (CaseSerializer, DocumentSerializer, EventSerializer, UploadSerializer,
-    DataSerializer, CompareSerializer, ReviewSerializer)
-from .engine import compare
+    BundleSerializer, DataSerializer, CompareSerializer, ReviewSerializer)
+from .engine import compare, THREE_WAY, TWO_WAY
 from . import ai
 
 class LoginThrottle(AnonRateThrottle):
@@ -96,9 +97,10 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     def extract(self, request, pk=None):
         case = self.get_object()
         revision = case.revision
-        documents = list(case.documents.all())
-        if not documents or any(not doc.file for doc in documents):
-            raise ValidationError('AI çıxarışı üçün fayllar yüklənməlidir.')
+        # Yalnız faylı olan sənədlər oxunur; manual daxil edilmiş sənədlərə toxunulmur.
+        documents = [doc for doc in case.documents.all() if doc.file]
+        if not documents:
+            raise ValidationError('AI çıxarışı üçün ən azı bir fayl yüklənməlidir.')
         if not settings.GEMINI_API_KEY:
             return Response({'detail': 'GEMINI_API_KEY təyin edilməyib.'}, status=503)
         extracted = []
@@ -118,6 +120,44 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
                 doc.save()
             self.invalidate(current)
             self.event(current, 'extracted', {'documents': [{'id': str(d.id), 'status': d.extraction_status, 'usage': d.usage} for d, *_ in extracted]})
+        return Response(CaseSerializer(current).data)
+
+    @extend_schema(request=BundleSerializer, responses=CaseSerializer,
+                   description='Bir faylda (məs. skan PDF) olan sifariş, qəbul sənədi və fakturanı AI ilə ayırır və hər birini '
+                               'ayrıca sənəd kimi saxlayır. Faylda tapılmayan növlərə toxunulmur. Səhifələr documents[].usage.pages-dədir.')
+    @action(detail=True, methods=['post'], url_path='bundle')
+    def bundle(self, request, pk=None):
+        serializer = BundleSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        file = serializer.validated_data['file']
+        case = self.get_object()
+        revision = case.revision
+        if not settings.GEMINI_API_KEY:
+            return Response({'detail': 'GEMINI_API_KEY təyin edilməyib.'}, status=503)
+        raw = file.read()
+        try:
+            found, usage = ai.extract_bundle(raw, file.name)
+        except ai.BundleContentError as exc:
+            raise ValidationError(str(exc))
+        except ai.AIUnavailable as exc:
+            return Response({'detail': str(exc)}, status=503)
+        with transaction.atomic():
+            current = self.locked()
+            if current.revision != revision:
+                return Response({'detail': 'Sənədlər dəyişib. Faylı yenidən göndərin.'}, status=409)
+            for kind, pages, data in found:
+                doc, _ = Document.objects.get_or_create(case=current, kind=kind)
+                old = doc.file.name
+                doc.original_name = file.name
+                doc.file.save(file.name, ContentFile(raw), save=False)
+                doc.data, doc.error, doc.extraction_status = data, '', 'extracted'
+                doc.usage = {**usage, 'bundle': True, 'pages': pages}
+                doc.save()
+                if old:
+                    transaction.on_commit(lambda name=old, storage=doc.file.storage: storage.delete(name))
+            self.invalidate(current)
+            self.event(current, 'bundle_extracted', {'file': file.name, 'usage': usage,
+                       'documents': [{'kind': kind, 'pages': pages} for kind, pages, _ in found]})
         return Response(CaseSerializer(current).data)
 
     @extend_schema(request=CompareSerializer, responses=CaseSerializer)
@@ -146,12 +186,14 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
     @action(detail=True, methods=['post'])
     def suggestions(self, request, pk=None):
         case = self.get_object()
-        docs = list(case.documents.all())
-        if len(docs) != 3 or any(not d.data for d in docs):
-            raise ValidationError('Əvvəl üç sənədin məlumatlarını daxil edin.')
+        by_kind = {d.kind: d for d in case.documents.all()}
+        kinds = THREE_WAY if 'receipt' in by_kind else TWO_WAY
+        if any(k not in by_kind or not by_kind[k].data for k in kinds):
+            raise ValidationError('Əvvəl sifariş və fakturanın (qəbul sənədi varsa, onun da) məlumatlarını daxil edin.')
+        docs = [by_kind[k] for k in kinds]
         try:
             result, usage = ai.suggest(docs)
-            mappings = [{k: item[k] for k in ('order', 'receipt', 'invoice')} for item in result['suggestions']]
+            mappings = [{k: item[k] for k in kinds} for item in result['suggestions']]
             compare(docs, mappings)  # Validate ranges and one-to-one mapping.
             if any(not 0 <= item['confidence'] <= 1 for item in result['suggestions']):
                 raise ValueError('Etibarsız əminlik göstəricisi.')
@@ -197,11 +239,13 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         for row in report['matches']:
             if row['status'] != 'matched':
                 refs = row['sources']
-                details.append(f"- {refs['invoice']['values']['name']}: sifariş {refs['order']['values']['quantity']}, qəbul {refs['receipt']['values']['quantity']}, faktura {refs['invoice']['values']['quantity']}. " + ' '.join(row['differences']))
+                received = f", qəbul {refs['receipt']['values']['quantity']}" if 'receipt' in refs else ''
+                details.append(f"- {refs['invoice']['values']['name']}: sifariş {refs['order']['values']['quantity']}{received}, faktura {refs['invoice']['values']['quantity']}. " + ' '.join(row['differences']))
         details.extend('- ' + issue['message'] for issue in report['issues'])
         text = (f"Hörmətli {case.supplier or 'təchizatçı'},\n\n{case.title} üzrə sənədlərin yoxlanmasında aşağıdakı fərqlər müəyyən edilib:\n"
                 + '\n'.join(details) + f"\n\nHesablana bilən mübahisəli məbləğ: {report['disputed_amount']} {report['currency'] or '(valyuta qeyri-müəyyəndir)'}."
                 + (' Natamam məlumatlara görə bu məbləğ yekun deyil.' if not report['amount_complete'] else '')
+                + (' Yoxlama sifariş və faktura əsasında aparılıb.' if report.get('mode') == 'two_way' else '')
                 + '\nZəhmət olmasa sənədləri yoxlayın və düzəliş edilmiş fakturanı və ya izahı təqdim edin.\n\nHörmətlə,\nSatınalma komandası')
         self.event(case, 'letter_drafted', {'revision': case.revision})
         return Response({'subject': f'Sənədlərdə uyğunsuzluq — {case.title}', 'body': text,

@@ -118,6 +118,43 @@ paths:
       responses:
         '204':
           description: No response body
+  /api/cases/{id}/bundle/:
+    post:
+      operationId: cases_bundle_create
+      description: Bir faylda (məs. skan PDF) olan sifariş, qəbul sənədi və fakturanı
+        AI ilə ayırır və hər birini ayrıca sənəd kimi saxlayır. Faylda tapılmayan
+        növlərə toxunulmur. Səhifələr documents[].usage.pages-dədir.
+      parameters:
+      - in: path
+        name: id
+        schema:
+          type: string
+          pattern: ^[0-9a-fA-F-]{36}$
+        required: true
+      tags:
+      - cases
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/BundleRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/BundleRequest'
+          multipart/form-data:
+            schema:
+              $ref: '#/components/schemas/BundleRequest'
+        required: true
+      security:
+      - tokenAuth: []
+      - cookieAuth: []
+      responses:
+        '200':
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Case'
+          description: ''
   /api/cases/{id}/compare/:
     post:
       operationId: cases_compare_create
@@ -573,6 +610,16 @@ components:
       required:
       - password
       - username
+    BundleRequest:
+      type: object
+      properties:
+        file:
+          type: string
+          format: binary
+          description: Sifariş, qəbul sənədi və/və ya fakturanı birlikdə saxlayan
+            bir fayl.
+      required:
+      - file
     Case:
       type: object
       properties:
@@ -752,13 +799,13 @@ components:
         receipt:
           type: integer
           minimum: 0
+          description: Qəbul sənədi olmayan (sifariş ↔ faktura) yoxlamada göndərilmir.
         invoice:
           type: integer
           minimum: 0
       required:
       - invoice
       - order
-      - receipt
     PaginatedCaseList:
       type: object
       required:
