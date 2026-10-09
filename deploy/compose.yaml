@@ -1,0 +1,66 @@
+name: hesabcheck
+services:
+  db:
+    image: postgres:17-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:?required}
+      POSTGRES_USER: ${POSTGRES_USER:?required}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?required}
+    volumes:
+      - postgres:/var/lib/postgresql/data
+    networks: [database]
+    command: ["postgres", "-c", "shared_buffers=32MB", "-c", "max_connections=30"]
+    mem_limit: 256m
+    cpus: 0.5
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U $$POSTGRES_USER -d $$POSTGRES_DB"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    logging: &logging
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+  web:
+    image: hesabcheck:${RELEASE_SHA:?required}
+    restart: unless-stopped
+    env_file: /root/hesabcheck/.env
+    environment:
+      APP_RELEASE: ${RELEASE_SHA}
+      POSTGRES_HOST: db
+      MEDIA_ROOT: /app/media
+    volumes:
+      - /root/hesabcheck/media:/app/media
+    networks:
+      database:
+      proxy:
+        aliases: [hesabcheck-web]
+    depends_on:
+      db:
+        condition: service_healthy
+    mem_limit: 512m
+    cpus: 1.0
+    pids_limit: 128
+    read_only: true
+    tmpfs:
+      - /tmp:size=64m,mode=1777
+    cap_drop: [ALL]
+    security_opt: [no-new-privileges:true]
+    stop_grace_period: 670s
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; r=urllib.request.Request('http://127.0.0.1:8000/health/',headers={'Host':'history.testgrelo.online','X-Forwarded-Proto':'https'}); urllib.request.urlopen(r,timeout=5)"]
+      interval: 10s
+      timeout: 6s
+      retries: 6
+      start_period: 15s
+    logging: *logging
+networks:
+  database:
+    internal: true
+  proxy:
+    external: true
+    name: hospital-appointment-demo_default
+volumes:
+  postgres:

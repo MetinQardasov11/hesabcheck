@@ -138,4 +138,8 @@ python manage.py spectacular --file openapi.yaml --validate --fail-on-warn
 
 Testlər hesablamaları, itkin məlumatları, valyuta/qablaşdırma fərqlərini, mənbələri, manual uyğunlaşdırmanı, autentifikasiyanı, fayl yükləməsini, AI xətalarını və qərar tarixçəsini əhatə edir. AI testləri mock-dur; bunlar real sənəd tanıma dəqiqliyi və ya benchmark iddiası deyil.
 
-Lokal verilənlər bazası və fayllar `.gitignore` ilə xaric edilib. SQLite bu lokal/hackathon versiyası üçündür. Public yerləşdirmədən əvvəl `DJANGO_DEBUG=0`, güclü `DJANGO_SECRET_KEY`, düzgün host/origin və HTTPS konfiqurasiyası tələb olunur; çoxsaylı paralel istifadəçi üçün PostgreSQL və background worker əlavə etmək lazımdır. Repozitoriyada deploy edilən servis və frontend yoxdur.
+Lokal verilənlər bazası və fayllar `.gitignore` ilə xaric edilib. SQLite bu lokal/hackathon versiyası üçündür. Public yerləşdirmədən əvvəl `DJANGO_DEBUG=0`, güclü `DJANGO_SECRET_KEY`, düzgün host/origin və HTTPS konfiqurasiyası tələb olunur; çoxsaylı paralel istifadəçi üçün PostgreSQL və background worker əlavə etmək lazımdır. Production yerləşdirmə və GitHub Actions təlimatı: [deploy/README.md](deploy/README.md). Frontend daxil deyil.
+
+## Production və CI/CD
+
+Docker, PostgreSQL, Gunicorn və HTTPS ilə yerləşdirmə: [deploy təlimatı](deploy/README.md). `master` branch-ə push uğurlu PostgreSQL testlərindən sonra avtomatik deploy başladır.

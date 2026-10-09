@@ -258,3 +258,21 @@ class GeminiAdapterTests(SimpleTestCase):
         with self.assertRaises(CommandError):
             call_command('check_gemini')
         mock.assert_not_called()
+
+class HealthTests(APITestCase):
+    def test_public_health_contains_release(self):
+        with override_settings(APP_RELEASE='test-commit'):
+            result = self.client.get('/health/')
+        self.assertEqual(result.status_code, 200)
+        self.assertEqual(result.json()['release'], 'test-commit')
+
+    def test_root_opens_documentation(self):
+        self.assertRedirects(self.client.get('/'), '/api/docs/', fetch_redirect_response=False)
+
+    @patch('matching.health.connection.cursor')
+    def test_unavailable_database_is_not_healthy(self, cursor):
+        from django.db import DatabaseError
+        cursor.side_effect = DatabaseError('private connection details')
+        result = self.client.get('/health/')
+        self.assertEqual(result.status_code, 503)
+        self.assertEqual(result.json(), {'status': 'unavailable'})
