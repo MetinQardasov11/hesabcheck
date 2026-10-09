@@ -1,0 +1,10 @@
+[run]
+source = matching, config
+omit =
+    */migrations/*
+    matching/tests/*
+    config/wsgi.py
+
+[report]
+show_missing = true
+skip_covered = false

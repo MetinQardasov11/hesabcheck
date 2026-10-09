@@ -143,12 +143,30 @@ Bir sifariş, bir qəbul, bir faktura və eyni valyuta üzrə mal sətirləri d�
 ## Test və yoxlamalar
 
 ```bash
-python manage.py test
+pip install -r requirements-dev.txt
+python manage.py test                                  # 197 test, ~10 saniyə
+coverage run manage.py test && coverage report         # tətbiq kodunun ~100%-i
 python manage.py check
 python manage.py spectacular --file openapi.yaml --validate --fail-on-warn
 ```
 
-Testlər hesablamaları, itkin məlumatları, valyuta/qablaşdırma fərqlərini, mənbələri, manual uyğunlaşdırmanı, autentifikasiyanı, fayl yükləməsini, AI xətalarını və qərar tarixçəsini əhatə edir. AI testləri mock-dur; bunlar real sənəd tanıma dəqiqliyi və ya benchmark iddiası deyil.
+Testlər `matching/tests/` paketindədir, hər fayl bir mövzunu əhatə edir:
+
+| Fayl | Nəyi yoxlayır |
+|---|---|
+| `test_engine.py` | Müqayisə qaydaları: 3 və 2 tərəfli hesablama, Decimal/yuvarlaqlaşdırma, valyuta, ƏDV, natamam məlumat, SKU/ad/manual uyğunlaşdırma, AZ/RU/EN vahidlər, qablaşdırma |
+| `test_schemas.py` | Sənəd JSON sxemi, rəqəm və valyuta validasiyası, limitlər |
+| `test_convert.py` | Word/Excel/CSV → strukturlu mətn, zədələnmiş və boş fayllar |
+| `test_ai.py` | Gemini adapteri: sorğu parametrləri, xətaların təhlükəsiz mesajları, fayl növləri, birləşmiş sənəd, təkliflərin filtrlənməsi (Gemini mock edilir) |
+| `test_api_auth.py` | Token girişi, rate limit, autentifikasiya, istifadəçilər arası təcrid (hər endpoint üçün 404) |
+| `test_api_cases.py` | Yoxlama yaratma, siyahı/səhifələmə, silmə (fayllar daxil) |
+| `test_api_documents.py` | Fayl yükləmə (format/imza/ölçü), əvəzləmə, manual məlumat, endirmə |
+| `test_api_extraction.py` | `extract/` və `bundle/`: qismən oxuma, xətalar, revision konflikti (409) |
+| `test_api_matching.py` | `compare/` və `suggestions/`: avtomatik/manual/ikitərəfli müqayisə, revision qaydası |
+| `test_api_decisions.py` | Qərar, hesabat, etiraz məktubu, audit tarixçəsi |
+| `test_system.py` | Health, Swagger, read-only admin, `seed_demo`, `check_gemini` |
+
+Real Gemini testlərdə çağırılmır; canlı yoxlama üçün `python manage.py check_gemini`. CI eyni testləri PostgreSQL ilə işlədir.
 
 Lokal verilənlər bazası və fayllar `.gitignore` ilə xaric edilib. SQLite bu lokal/hackathon versiyası üçündür. Public yerləşdirmədən əvvəl `DJANGO_DEBUG=0`, güclü `DJANGO_SECRET_KEY`, düzgün host/origin və HTTPS konfiqurasiyası tələb olunur; çoxsaylı paralel istifadəçi üçün PostgreSQL və background worker əlavə etmək lazımdır. Production yerləşdirmə və GitHub Actions təlimatı: [deploy/README.md](deploy/README.md). Frontend daxil deyil.
 

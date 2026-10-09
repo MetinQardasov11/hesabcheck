@@ -103,7 +103,8 @@ def is_office(name):
 
 def to_text(raw, name):
     text = CONVERTERS[Path(name).suffix.lower()](raw)
-    if not text.replace('=', '').strip():
+    content = [line for line in text.splitlines() if line.strip() and not line.startswith('=== Page ')]
+    if not content or all(line in ('[table]', '[/table]') for line in content):
         raise ConversionError('Faylda oxunacaq məzmun tapılmadı.')
     if len(text) > MAX_TEXT_CHARS:
         raise ConversionError('Faylın məzmunu çox böyükdür; sənədi hissələrə bölün.')
