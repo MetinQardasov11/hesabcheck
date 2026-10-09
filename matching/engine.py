@@ -29,7 +29,8 @@ def compare(documents, mappings=None):
         return {'status': 'needs_review', 'mode': mode, 'currency': None, 'disputed_amount': '0.00', 'amount_complete': False,
                 'issues': [{'code': 'missing_document', 'message': message}], 'matches': [], 'notes': []}
     docs = {k: all_docs[k] for k in kinds}
-    currencies = [docs[k].data['currency'] for k in kinds]
+    # Pul məbləğləri yalnız sifariş və fakturadadır; qəbul sənədində adətən qiymət/valyuta olmur.
+    currencies = [docs[k].data['currency'] for k in TWO_WAY]
     currency_ok = all(currencies) and len(set(currencies)) == 1
     if not currency_ok:
         issue('currency_review', 'Valyutalar fərqlidir və ya göstərilməyib; məbləğlər toplanmır.')

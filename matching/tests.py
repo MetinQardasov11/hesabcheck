@@ -54,6 +54,14 @@ class MatchingTests(SimpleTestCase):
             doc.data['lines'][0]['name'] = f'Name in language {i}'
         self.assertEqual(compare(rows)['status'], 'needs_review')
         self.assertEqual(compare(rows, [{'order': 0, 'receipt': 0, 'invoice': 0}])['status'], 'matched')
+    def test_receipt_without_prices_or_currency(self):
+        rows = docs('80')
+        receipt = rows[1].data
+        receipt['currency'] = receipt['total'] = None
+        for field in ('unit_price', 'line_total'):
+            receipt['lines'][0][field] = None
+        result = compare(rows)
+        self.assertEqual((result['status'], result['disputed_amount'], result['currency']), ('mismatch', '240.00', 'AZN'))
     def test_two_way_without_receipt(self):
         order, _, invoice = docs(price='13')
         result = compare([order, invoice])

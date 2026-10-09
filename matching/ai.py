@@ -71,8 +71,11 @@ EXTRACTION_RULES = (
     'Numbers are nonnegative decimal strings without separators, currency uppercase ISO code. '
     'pack_size means number of base units per stated selling unit. Normalize unit labels across AZ/RU/EN '
     'only when unambiguous. total is the printed goods subtotal. Do not invent a subtotal. '
-    'Add Azerbaijani warnings for tax, discount, shipping, unreadable fields, ambiguity or unsupported documents; '
-    'this MVP only handles goods without tax/discount/shipping. Plain text has page 1.')
+    'Add Azerbaijani warnings only for tax, discount or shipping that is actually charged, unreadable fields, '
+    'ambiguity or unsupported documents; this MVP only handles goods without tax/discount/shipping. '
+    'A statement that amounts exclude tax or that there is no tax/discount/shipping is not a warning. '
+    'Goods receipts (delivery notes) normally have no prices, currency or totals: leave those fields null '
+    'and do not add warnings about them. Plain text has page 1.')
 
 def file_part(raw, name):
     suffix = Path(name).suffix.lower()
