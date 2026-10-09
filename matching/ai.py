@@ -7,6 +7,7 @@ from google import genai
 from google.genai import types, errors
 from django.conf import settings
 from rest_framework.exceptions import ValidationError
+from . import convert
 from .schemas import DOCUMENT_SCHEMA, validate_data, obj
 
 class AIUnavailable(Exception):
@@ -35,6 +36,8 @@ def request_json(content, schema, instruction, max_output_tokens=12000, timeout_
                     response_json_schema=schema,
                 ),
             )
+        if response.candidates and response.candidates[0].finish_reason == types.FinishReason.MAX_TOKENS:
+            raise AIUnavailable('Sənəd çox böyükdür: AI cavabı limitə çatdı. Sənədi hissələrə bölüb yükləyin və ya məlumatı manual daxil edin.')
         if not response.candidates or response.candidates[0].finish_reason != types.FinishReason.STOP:
             raise AIUnavailable('Gemini tam cavab qaytarmadı və ya sorğunu blokladı; insan yoxlaması lazımdır.')
         if not response.text:
@@ -75,14 +78,24 @@ EXTRACTION_RULES = (
     'ambiguity or unsupported documents; this MVP only handles goods without tax/discount/shipping. '
     'A statement that amounts exclude tax or that there is no tax/discount/shipping is not a warning. '
     'Goods receipts (delivery notes) normally have no prices, currency or totals: leave those fields null '
-    'and do not add warnings about them. Plain text has page 1.')
+    'and do not add warnings about them. '
+    'Documents come in any layout, language and template: identify fields by meaning, never by position. '
+    'Tables may span several pages: include every goods line exactly once, join rows continued on the next page, '
+    'skip repeated headers, page subtotals and carried-forward totals. '
+    'Converted Word/Excel/CSV text marks pages with "=== Page N ==="; plain text without markers has page 1. '
+    'Keep each evidence quote to the shortest verbatim snippet that proves the value (about 80 characters max).')
+
+IMAGE_TYPES = {'.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg',
+               '.webp': 'image/webp', '.heic': 'image/heic', '.heif': 'image/heif'}
 
 def file_part(raw, name):
+    """PDF və şəkillər modelə birbaşa, Word/Excel/CSV isə strukturlu mətnə çevrilərək göndərilir."""
     suffix = Path(name).suffix.lower()
     if suffix == '.txt':
         return types.Part.from_text(text=raw.decode('utf-8'))
-    mime = {'.pdf': 'application/pdf', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg'}[suffix]
-    return types.Part.from_bytes(data=raw, mime_type=mime)
+    if convert.is_office(name):
+        return types.Part.from_text(text=convert.to_text(raw, name))
+    return types.Part.from_bytes(data=raw, mime_type=IMAGE_TYPES[suffix])
 
 def extract(document):
     with document.file.open('rb') as stream:
@@ -90,7 +103,8 @@ def extract(document):
     content = [file_part(raw, document.original_name),
                types.Part.from_text(text=f'Extract this {document.kind} document. Preserve original product names.')]
     data, usage = request_json(content, DOCUMENT_SCHEMA, EXTRACTION_RULES +
-        f' The file may also contain other documents; extract only the {document.kind} document and ignore the rest.')
+        f' The file may also contain other documents; extract only the {document.kind} document and ignore the rest.',
+        max_output_tokens=65536, timeout_ms=300000)
     return validate_data(data), usage
 
 BUNDLE_SCHEMA = obj({'documents': {'type': 'array', 'items': obj({
@@ -109,7 +123,7 @@ def extract_bundle(raw, name):
         'Return one entry per document kind with the 1-based page numbers of this file that belong to it; '
         'omit kinds that are not present and never merge two documents into one entry. '
         'Evidence page numbers refer to pages of this file. The file containing several documents is expected '
-        'and is not a warning.'), max_output_tokens=32000, timeout_ms=180000)
+        'and is not a warning.'), max_output_tokens=65536, timeout_ms=300000)
     found, seen = [], set()
     for item in data['documents']:
         if item['kind'] in seen:

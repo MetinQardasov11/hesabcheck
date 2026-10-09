@@ -1,3 +1,4 @@
+from concurrent.futures import ThreadPoolExecutor
 from django.core.files.base import ContentFile
 from django.db import transaction
 from django.conf import settings
@@ -15,7 +16,7 @@ from .models import Case, Document, AuditEvent
 from .serializers import (CaseSerializer, DocumentSerializer, EventSerializer, UploadSerializer,
     BundleSerializer, DataSerializer, CompareSerializer, ReviewSerializer)
 from .engine import compare, THREE_WAY, TWO_WAY
-from . import ai
+from . import ai, convert
 
 class LoginThrottle(AnonRateThrottle):
     scope = 'login'
@@ -103,13 +104,15 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
             raise ValidationError('AI çıxarışı üçün ən azı bir fayl yüklənməlidir.')
         if not settings.GEMINI_API_KEY:
             return Response({'detail': 'GEMINI_API_KEY təyin edilməyib.'}, status=503)
-        extracted = []
-        for doc in documents:
+        def read(doc):
             try:
                 data, usage = ai.extract(doc)
-                extracted.append((doc, data, usage, ''))
-            except (ai.AIUnavailable, ValidationError) as exc:
-                extracted.append((doc, {}, {}, str(exc)))
+                return doc, data, usage, ''
+            except (ai.AIUnavailable, ValidationError, convert.ConversionError) as exc:
+                return doc, {}, {}, str(exc)
+        # Sənədlər paralel oxunur; thread-lərdə verilənlər bazasına müraciət yoxdur.
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            extracted = list(pool.map(read, documents))
         with transaction.atomic():
             current = self.locked()
             if current.revision != revision:
@@ -137,7 +140,7 @@ class CaseViewSet(mixins.ListModelMixin, mixins.RetrieveModelMixin, mixins.Creat
         raw = file.read()
         try:
             found, usage = ai.extract_bundle(raw, file.name)
-        except ai.BundleContentError as exc:
+        except (ai.BundleContentError, convert.ConversionError) as exc:
             raise ValidationError(str(exc))
         except ai.AIUnavailable as exc:
             return Response({'detail': str(exc)}, status=503)

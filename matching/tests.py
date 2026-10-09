@@ -373,6 +373,13 @@ class GeminiAdapterTests(SimpleTestCase):
                     self.call()
 
     @patch('matching.ai.genai.Client')
+    def test_max_tokens_is_explained(self, mock):
+        mock.return_value.__enter__.return_value.models.generate_content.return_value = self.response(finish='MAX_TOKENS')
+        with self.assertRaises(AIUnavailable) as caught:
+            self.call()
+        self.assertIn('çox böyükdür', str(caught.exception))
+
+    @patch('matching.ai.genai.Client')
     def test_quota_error_is_safe_and_actionable(self, mock):
         from google.genai import errors
         mock.return_value.__enter__.return_value.models.generate_content.side_effect = errors.ClientError(
@@ -409,6 +416,105 @@ class GeminiAdapterTests(SimpleTestCase):
         with self.assertRaises(CommandError):
             call_command('check_gemini')
         mock.assert_not_called()
+
+def make_xlsx():
+    import io
+    from openpyxl import Workbook
+    workbook = Workbook()
+    sheet = workbook.active
+    sheet.title = 'Faktura'
+    sheet.append(['Məhsul', 'Miqdar', 'Qiymət'])
+    sheet.append(['A4 kağız', 100, 12.5])
+    workbook.create_sheet('Qeyd').append(['ƏDV yoxdur'])
+    stream = io.BytesIO()
+    workbook.save(stream)
+    return stream.getvalue()
+
+def make_docx():
+    import io, zipfile
+    xml = ('<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main"><w:body>'
+           '<w:p><w:r><w:t>Sifariş № 7</w:t></w:r></w:p><w:tbl>'
+           '<w:tr><w:tc><w:p><w:r><w:t>Məhsul</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>Miqdar</w:t></w:r></w:p></w:tc></w:tr>'
+           '<w:tr><w:tc><w:p><w:r><w:t>Qələm</w:t></w:r></w:p></w:tc><w:tc><w:p><w:r><w:t>200</w:t></w:r></w:p></w:tc></w:tr>'
+           '</w:tbl></w:body></w:document>')
+    stream = io.BytesIO()
+    with zipfile.ZipFile(stream, 'w') as archive:
+        archive.writestr('word/document.xml', xml)
+    return stream.getvalue()
+
+class ConversionTests(SimpleTestCase):
+    def test_xlsx_sheets_become_pages(self):
+        from .convert import to_text
+        text = to_text(make_xlsx(), 'invoice.xlsx')
+        self.assertIn('=== Page 1: sheet "Faktura" ===', text)
+        self.assertIn('A4 kağız\t100\t12.5', text)
+        self.assertIn('=== Page 2: sheet "Qeyd" ===', text)
+    def test_docx_paragraphs_and_tables(self):
+        from .convert import to_text
+        text = to_text(make_docx(), 'order.docx')
+        self.assertIn('Sifariş № 7', text)
+        self.assertIn('[table]\nMəhsul\tMiqdar\nQələm\t200\n[/table]', text)
+    def test_csv_semicolon_and_bom(self):
+        from .convert import to_text
+        text = to_text('\ufeffMəhsul;Miqdar\nQələm;200\n'.encode('utf-8'), 'receipt.csv')
+        self.assertIn('Qələm\t200', text)
+    def test_broken_files(self):
+        from .convert import to_text, ConversionError
+        for name, raw in [('a.xlsx', b'PK\x03\x04broken'), ('a.docx', b'PK\x03\x04broken'), ('a.xls', b'\xd0\xcf\x11\xe0broken'),
+                          ('a.csv', b'\xff\xfe\x00bad')]:
+            with self.subTest(name=name), self.assertRaises(ConversionError):
+                to_text(raw, name)
+    @patch('matching.ai.request_json')
+    def test_office_files_sent_as_text(self, mock):
+        from django.core.files.base import ContentFile
+        from .ai import extract
+        mock.return_value = (document('invoice'), {})
+        extract(SimpleNamespace(file=ContentFile(make_xlsx()), original_name='invoice.xlsx', kind='invoice'))
+        part = mock.call_args.args[0][0]
+        self.assertIn('A4 kağız', part.text)
+        self.assertEqual(mock.call_args.kwargs['max_output_tokens'], 65536)
+    @patch('matching.ai.request_json')
+    def test_phone_photo_types(self, mock):
+        from django.core.files.base import ContentFile
+        from .ai import extract
+        mock.return_value = (document('receipt'), {})
+        for name, mime in [('photo.heic', 'image/heic'), ('photo.webp', 'image/webp')]:
+            extract(SimpleNamespace(file=ContentFile(b'bytes'), original_name=name, kind='receipt'))
+            self.assertEqual(mock.call_args.args[0][0].inline_data.mime_type, mime)
+
+class OfficeUploadTests(APITestCase):
+    def setUp(self):
+        self.temp = tempfile.TemporaryDirectory()
+        self.setting = override_settings(MEDIA_ROOT=self.temp.name)
+        self.setting.enable()
+        self.addCleanup(self.temp.cleanup)
+        self.addCleanup(self.setting.disable)
+        self.user = get_user_model().objects.create_user(username='office')
+        self.client.force_authenticate(self.user)
+        self.url = f'/api/cases/{self.client.post("/api/cases/", {"title": "Office"}).data["id"]}/'
+    def upload(self, name, raw, kind='invoice'):
+        return self.client.post(self.url + 'documents/', {'kind': kind, 'file': SimpleUploadedFile(name, raw)})
+    def test_accepts_office_and_photo_formats(self):
+        heic = b'\x00\x00\x00\x18ftypheic' + b'\x00' * 8
+        webp = b'RIFF\x00\x00\x00\x00WEBPVP8 '
+        for name, raw in [('i.xlsx', make_xlsx()), ('o.docx', make_docx()), ('r.csv', 'a;b\n1;2'.encode()),
+                          ('p.heic', heic), ('p.webp', webp)]:
+            with self.subTest(name=name):
+                self.assertEqual(self.upload(name, raw).status_code, 201)
+    def test_rejects_broken_disguised_and_legacy_files(self):
+        for name, raw in [('i.xlsx', b'PK\x03\x04broken'), ('i.xlsx', b'%PDF-'), ('o.doc', b'\xd0\xcf\x11\xe0'),
+                          ('p.heic', b'not an image'), ('x.exe', b'MZ')]:
+            with self.subTest(name=name):
+                self.assertEqual(self.upload(name, raw).status_code, 400)
+    @override_settings(GEMINI_API_KEY='test')
+    @patch('matching.ai.request_json')
+    def test_three_documents_extracted(self, mock):
+        mock.side_effect = lambda content, *args, **kwargs: (document('order'), {})
+        for kind, (name, raw) in zip(['order', 'receipt', 'invoice'], [('o.docx', make_docx()), ('r.csv', b'a;b'), ('i.xlsx', make_xlsx())]):
+            self.upload(name, raw, kind)
+        response = self.client.post(self.url + 'extract/')
+        self.assertEqual(mock.call_count, 3)
+        self.assertTrue(all(doc['extraction_status'] == 'extracted' for doc in response.data['documents']))
 
 class HealthTests(APITestCase):
     def test_public_health_contains_release(self):
