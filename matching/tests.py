@@ -124,6 +124,14 @@ class MatchingTests(SimpleTestCase):
         rows = docs(); rows[-1].data['lines'][0]['line_total'] = '1201'
         self.assertEqual(compare(rows)['status'], 'mismatch')
         self.assertFalse(compare(rows)['amount_complete'])
+    def test_optional_tax_and_notes_fields(self):
+        data = document('invoice')
+        validate_data(data)
+        data.update(tax_total='0.00', notes=['Ödəniş 15 gün ərzində'])
+        validate_data(data)
+        data['notes'] = 'not a list'
+        with self.assertRaises(ValidationError):
+            validate_data(data)
     def test_invalid_numeric_data(self):
         for bad in ['NaN', 'Infinity', '-1', '1e9999', '0.00000001']:
             data = document('order'); data['lines'][0]['quantity'] = bad

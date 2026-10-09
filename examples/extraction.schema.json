@@ -337,6 +337,12 @@
       "items": {
         "type": "string"
       }
+    },
+    "notes": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
     }
   },
   "required": [
@@ -346,7 +352,8 @@
     "tax_total",
     "source",
     "lines",
-    "warnings"
+    "warnings",
+    "notes"
   ],
   "additionalProperties": false
 }

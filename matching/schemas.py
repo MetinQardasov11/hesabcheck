@@ -13,10 +13,11 @@ DOCUMENT_SCHEMA = obj({
     'source': obj({key: SOURCE for key in ['document_number', 'currency', 'total']}),
     'lines': {'type': 'array', 'items': LINE},
     'warnings': {'type': 'array', 'items': {'type': 'string'}},
+    'notes': {'type': 'array', 'items': {'type': 'string'}},
 })
 
 # Köhnə və manual məlumatlarda tax_total olmaya bilər; AI cavabında isə məcburidir.
-STORED_SCHEMA = {**DOCUMENT_SCHEMA, 'required': [key for key in DOCUMENT_SCHEMA['required'] if key != 'tax_total']}
+STORED_SCHEMA = {**DOCUMENT_SCHEMA, 'required': [key for key in DOCUMENT_SCHEMA['required'] if key not in ('tax_total', 'notes')]}
 
 def validate_data(data):
     try:
