@@ -10,6 +10,27 @@ def money(value):
 def identity(line):
     return ('sku', line['sku'].strip().casefold()) if line.get('sku') else ('name', (line.get('name') or '').strip().casefold())
 
+# AZ/RU/EN vahid yazılışları eyni vahidə gətirilir; siyahıda olmayan vahid olduğu kimi müqayisə olunur.
+UNIT_SYNONYMS = {
+    'piece': ['ədəd', 'əd', 'шт', 'штука', 'штук', 'pcs', 'pc', 'piece', 'pieces', 'ea', 'each', 'unit', 'units'],
+    'box': ['qutu', 'кор', 'короб', 'коробка', 'box', 'boxes', 'bx', 'ctn', 'carton'],
+    'pack': ['paket', 'paçka', 'упак', 'уп', 'упаковка', 'пачка', 'pack', 'packs', 'pkg', 'package'],
+    'kg': ['kq', 'kg', 'кг', 'kilogram', 'kiloqram', 'килограмм'],
+    'g': ['q', 'qr', 'g', 'gr', 'г', 'гр', 'gram', 'qram', 'грамм'],
+    'l': ['l', 'lt', 'litr', 'liter', 'litre', 'л', 'литр'],
+    'm': ['m', 'metr', 'meter', 'metre', 'м', 'метр'],
+    'set': ['dəst', 'set', 'компл', 'комплект', 'kit'],
+    'roll': ['rulon', 'рулон', 'roll', 'rolls'],
+    'sheet': ['vərəq', 'лист', 'sheet', 'sheets'],
+    'pair': ['cüt', 'пара', 'pair', 'pairs'],
+    'bottle': ['şüşə', 'butulka', 'бут', 'бутылка', 'bottle', 'bottles'],
+}
+UNIT_ALIASES = {alias: canonical for canonical, aliases in UNIT_SYNONYMS.items() for alias in aliases}
+
+def normalize_unit(unit):
+    text = unit.strip().casefold().rstrip('.').strip()
+    return UNIT_ALIASES.get(text, text)
+
 THREE_WAY = ('order', 'receipt', 'invoice')
 TWO_WAY = ('order', 'invoice')
 
@@ -76,7 +97,7 @@ def compare(documents, mappings=None):
         result = {'sources': refs, 'status': 'matched', 'differences': [], 'disputed_amount': None}
         required = ('name', 'quantity', 'unit', 'pack_size')
         complete = all(all(row.get(f) is not None and row.get(f) != '' for f in required) for row in rows.values())
-        compatible = complete and len({r['unit'].strip().casefold() for r in rows.values()}) == 1 and len({D(r['pack_size']) for r in rows.values()}) == 1
+        compatible = complete and len({normalize_unit(r['unit']) for r in rows.values()}) == 1 and len({D(r['pack_size']) for r in rows.values()}) == 1
         if not compatible or not currency_ok or any(rows[k]['unit_price'] is None for k in ('order', 'invoice')):
             result['status'] = 'needs_review'
             result['differences'].append('Miqdar, vahid, qablaşdırma, qiymət və ya valyuta yoxlanmalıdır.')

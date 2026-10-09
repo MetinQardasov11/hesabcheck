@@ -108,7 +108,8 @@ def extract_bundle(raw, name):
         ' Identify each document by its own content (title, numbering, purpose), not by page order. '
         'Return one entry per document kind with the 1-based page numbers of this file that belong to it; '
         'omit kinds that are not present and never merge two documents into one entry. '
-        'Evidence page numbers refer to pages of this file.'), max_output_tokens=32000, timeout_ms=180000)
+        'Evidence page numbers refer to pages of this file. The file containing several documents is expected '
+        'and is not a warning.'), max_output_tokens=32000, timeout_ms=180000)
     found, seen = [], set()
     for item in data['documents']:
         if item['kind'] in seen:

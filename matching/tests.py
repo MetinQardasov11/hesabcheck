@@ -54,6 +54,13 @@ class MatchingTests(SimpleTestCase):
             doc.data['lines'][0]['name'] = f'Name in language {i}'
         self.assertEqual(compare(rows)['status'], 'needs_review')
         self.assertEqual(compare(rows, [{'order': 0, 'receipt': 0, 'invoice': 0}])['status'], 'matched')
+    def test_unit_synonyms_across_languages(self):
+        rows = docs('80')
+        for doc, unit in zip(rows, ['qutu', 'кор.', 'Box']):
+            doc.data['lines'][0]['unit'] = unit
+        self.assertEqual(compare(rows)['disputed_amount'], '240.00')
+        rows[2].data['lines'][0]['unit'] = 'kg'
+        self.assertEqual(compare(rows)['status'], 'needs_review')
     def test_receipt_without_prices_or_currency(self):
         rows = docs('80')
         receipt = rows[1].data

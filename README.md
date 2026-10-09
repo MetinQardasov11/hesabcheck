@@ -134,7 +134,7 @@ max(0, faktura_miqdarı × faktura_qiyməti − min(sifariş_miqdarı, qəbul_mi
 
 Bu qayda qiymət və miqdar fərqini iki dəfə saymır. Pul `Decimal`, yuvarlaqlaşdırma 2 rəqəm və `ROUND_HALF_UP` ilə hesablanır. Miqdar/qiymət fərqi məbləğ sıfır olsa belə qeyd edilir. Ümumi məbləğ yalnız uyğunlaşdırılmış və hesablana bilən sətirlər üçündür; `amount_complete: false` yekun rəqəm kimi göstərilməməlidir. Valyuta çevrilməsi yoxdur.
 
-Bir sifariş, bir qəbul, bir faktura və eyni valyuta üzrə mal sətirləri dəstəklənir. Vergi, endirim, daşınma haqqı, kredit fakturaları, qismən fakturalaşdırma qaydaları və çoxsaylı qəbul sənədlərinin birləşdirilməsi avtomatlaşdırılmır. Bunlar insan yoxlaması tələb edir. Bank ödənişi və mühasibat inteqrasiyası daxil deyil.
+Bir sifariş, bir qəbul, bir faktura və eyni valyuta üzrə mal sətirləri dəstəklənir. Vahidlər AZ/RU/EN sinonim cədvəli ilə eyniləşdirilir (`ədəd`/`шт`/`piece`, `qutu`/`кор.`/`box` və s., `matching/engine.py`). Valyuta yalnız sifariş və fakturada tələb olunur; qəbul sənədində qiymət/valyuta olmaya bilər. Vergi, endirim, daşınma haqqı, kredit fakturaları, qismən fakturalaşdırma qaydaları və çoxsaylı qəbul sənədlərinin birləşdirilməsi avtomatlaşdırılmır. Bunlar insan yoxlaması tələb edir. Bank ödənişi və mühasibat inteqrasiyası daxil deyil.
 
 ## Test və yoxlamalar
 
