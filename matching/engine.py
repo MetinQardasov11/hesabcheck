@@ -74,6 +74,9 @@ def compare(documents, mappings=None):
                         issue('arithmetic_mismatch', 'Sətir cəmi miqdar × qiymət ilə uyğun deyil.', document_id=str(doc.id), line=i)
                 else:
                     issue('missing_amount', 'Miqdar, qiymət və ya sətir cəmi oxunmayıb.', document_id=str(doc.id), line=i)
+            tax = data.get('tax_total')
+            if tax is not None and D(tax) > 0:
+                issue('tax_review', f'Sənəddə ƏDV/vergi var ({tax}); sistem ƏDV-siz mal məbləğlərini müqayisə edir.', document_id=str(doc.id))
             if data['total'] is None:
                 issue('missing_total', 'Sənəd cəmi oxunmayıb.', document_id=str(doc.id))
             elif len(amounts) == len(data['lines']) and money(sum(amounts, D('0'))) != money(D(data['total'])):
@@ -130,7 +133,7 @@ def compare(documents, mappings=None):
     for kind in kinds:
         for i in set(range(len(lines[kind]))) - used[kind]:
             issue('unmatched_line', 'Məhsul sətri insan tərəfindən uyğunlaşdırılmalıdır.', document_id=str(docs[kind].id), kind=kind, line=i)
-    review_codes = {'currency_review', 'incomplete_document', 'missing_evidence', 'missing_amount', 'missing_total', 'unmatched_line'}
+    review_codes = {'currency_review', 'tax_review', 'incomplete_document', 'missing_evidence', 'missing_amount', 'missing_total', 'unmatched_line'}
     review = any(i['code'] in review_codes for i in issues) or any(r['status'] == 'needs_review' for r in results)
     mismatch = bool(issues) or any(r['status'] == 'mismatch' for r in results)
     notes = [] if mode == 'three_way' else ['Qəbul sənədi olmadan sifariş ↔ faktura müqayisəsi: malların faktiki qəbulu yoxlanmayıb.']

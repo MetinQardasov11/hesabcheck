@@ -19,6 +19,12 @@
         "null"
       ]
     },
+    "tax_total": {
+      "type": [
+        "string",
+        "null"
+      ]
+    },
     "source": {
       "type": "object",
       "properties": {
@@ -337,6 +343,7 @@
     "document_number",
     "currency",
     "total",
+    "tax_total",
     "source",
     "lines",
     "warnings"

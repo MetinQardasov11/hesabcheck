@@ -41,6 +41,13 @@ class MatchingTests(SimpleTestCase):
         self.assertEqual(compare(rows)['disputed_amount'], '240.00')
         rows[0].data['lines'][0]['unit'] = None
         self.assertEqual(compare(rows)['status'], 'needs_review')
+    def test_vat_zero_is_fine_positive_needs_review(self):
+        rows = docs('80'); rows[2].data['tax_total'] = '0.00'
+        self.assertEqual(compare(rows)['status'], 'mismatch')
+        rows[2].data['tax_total'] = '216.00'
+        result = compare(rows)
+        self.assertEqual(result['status'], 'needs_review')
+        self.assertIn('tax_review', [issue['code'] for issue in result['issues']])
     def test_pack_size_not_stated_anywhere(self):
         rows = docs('80')
         for doc in rows:
@@ -500,6 +507,18 @@ class ConversionTests(SimpleTestCase):
         part = mock.call_args.args[0][0]
         self.assertIn('A4 kağız', part.text)
         self.assertEqual(mock.call_args.kwargs['max_output_tokens'], 65536)
+    @patch('matching.ai.request_json')
+    def test_tax_warnings_dropped_when_tax_is_structured(self, mock):
+        from django.core.files.base import ContentFile
+        from .ai import extract
+        data = document('order'); data['tax_total'] = '0.00'
+        data['warnings'] = ['ƏDV tətbiq olunmuşdur.', 'VAT present', 'Səhifə 2 oxunmur']
+        mock.return_value = (data, {})
+        result, _ = extract(SimpleNamespace(file=ContentFile(b'x'), original_name='o.txt', kind='order'))
+        self.assertEqual(result['warnings'], ['Səhifə 2 oxunmur'])
+        legacy = document('order'); legacy['warnings'] = ['ƏDV var']
+        mock.return_value = (legacy, {})
+        self.assertEqual(extract(SimpleNamespace(file=ContentFile(b'x'), original_name='o.txt', kind='order'))[0]['warnings'], ['ƏDV var'])
     @patch('matching.ai.request_json')
     def test_phone_photo_types(self, mock):
         from django.core.files.base import ContentFile
